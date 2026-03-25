@@ -1,0 +1,96 @@
+name: Test — Agentic Ready (Dry Run)
+# Manually trigger from Actions tab to preview changes before committing
+# No files are written, no API calls made, pure preview mode
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: Target repository (default: this repo)
+        required: false
+        default: .
+        type: string
+      verify:
+        description: Verify generated context with Claude Haiku
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    name: Preview Agentic Transformation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout legacy-to-agentic-ready
+        uses: actions/checkout@v4
+        with:
+          path: toolkit
+
+      - name: Checkout target repo
+        if: ${{ github.event.inputs.target_repo != '.' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.target_repo }}
+          path: target
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Run transformer in dry-run mode (no files written)
+        run: |
+          cd toolkit
+          TARGET_PATH="${{ github.event.inputs.target_repo == '.' && '.' || '../target' }}"
+          
+          echo "🔍 Analyzing repository: $TARGET_PATH"
+          echo "📋 Dry-run mode enabled (no files will be written)"
+          echo ""
+          
+          python scripts/run_transformer.py \
+            --target "$TARGET_PATH" \
+            --dry-run \
+            --verbose
+        env:
+          # Optional: only needed for --verify flag
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Run verification (optional)
+        if: ${{ github.event.inputs.verify == true && secrets.ANTHROPIC_API_KEY }}
+        run: |
+          cd toolkit
+          TARGET_PATH="${{ github.event.inputs.target_repo == '.' && '.' || '../target' }}"
+          
+          echo ""
+          echo "✅ Verifying generated context with Claude Haiku..."
+          echo ""
+          
+          python scripts/run_transformer.py \
+            --target "$TARGET_PATH" \
+            --dry-run \
+            --verify
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Dry-run Complete"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📋 Preview above shows what would be generated."
+          echo ""
+          echo "Next steps:"
+          echo "  1. Review the output above"
+          echo "  2. If satisfied, open an issue to trigger real transformation:"
+          echo "     Title: '[agentic-ready] Transform this repo'"
+          echo "  3. Or manually run:"
+          echo "     python scripts/run_transformer.py --target /path/to/repo"
+          echo ""
