@@ -39,18 +39,28 @@ jobs:
           TARGET_REPO: ${{ inputs.target_repo }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
         run: |
-          SHA=""
-          RESPONSE=$(gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" 2>/dev/null) && \
-            SHA=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))") || true
+          # Clone target repo using the token for auth
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" target-repo
+          cd target-repo
 
-          if [ -n "$SHA" ]; then
-            echo "ℹ️  Workflow already exists, updating..."
-            python3 -c "import json,base64; c=base64.b64encode(open('toolkit/templates/install-workflow.yml','rb').read()).decode(); print(json.dumps({'message':'chore: update agentic-ready workflow','content':c,'sha':'$SHA','branch':'$TARGET_BRANCH'}))" \
-              | gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" -X PUT --input - > /dev/null
+          mkdir -p .github/workflows
+          cp ../toolkit/templates/install-workflow.yml .github/workflows/agentic-ready.yml
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+            echo "ℹ️  Workflow already up to date, nothing to commit"
           else
-            echo "📝 Creating new workflow..."
-            python3 -c "import json,base64; c=base64.b64encode(open('toolkit/templates/install-workflow.yml','rb').read()).decode(); print(json.dumps({'message':'feat: add agentic-ready automation workflow','content':c,'branch':'$TARGET_BRANCH'}))" \
-              | gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" -X PUT --input - > /dev/null
+            git add .github/workflows/agentic-ready.yml
+            if git ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" | grep -q "${TARGET_BRANCH}"; then
+              git commit -m "feat: add AgentReady automation workflow"
+              git push origin "HEAD:${TARGET_BRANCH}"
+              echo "✅ Workflow committed to ${TARGET_REPO}@${TARGET_BRANCH}"
+            else
+              echo "❌ Branch ${TARGET_BRANCH} not found in ${TARGET_REPO}"
+              exit 1
+            fi
           fi
 
       - name: Report result
