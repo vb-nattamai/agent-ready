@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       target_repo:
-        description: "Target repository to analyse (default: this repo)"
+        description: "Target repo to preview (owner/repo). Leave as '.' to smoke-test agent-ready itself."
         required: false
         default: .
         type: string

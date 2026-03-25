@@ -44,19 +44,22 @@ jobs:
           cd target-repo
 
           mkdir -p .github/workflows
+          # Issue trigger — opens a PR when [agentic-ready] issue is created
           cp ../toolkit/templates/install-workflow.yml .github/workflows/agentic-ready.yml
+          # Weekly context refresh — detects agent-context.json drift every Monday
+          cp ../toolkit/templates/context-refresh-workflow.yml .github/workflows/context-refresh.yml
 
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
           if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
-            echo "ℹ️  Workflow already up to date, nothing to commit"
+            echo "ℹ️  Workflows already up to date, nothing to commit"
           else
-            git add .github/workflows/agentic-ready.yml
+            git add .github/workflows/agentic-ready.yml .github/workflows/context-refresh.yml
             if git ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" | grep -q "${TARGET_BRANCH}"; then
-              git commit -m "feat: add AgentReady automation workflow"
+              git commit -m "feat: add AgentReady automation workflows (trigger + context refresh)"
               git push origin "HEAD:${TARGET_BRANCH}"
-              echo "✅ Workflow committed to ${TARGET_REPO}@${TARGET_BRANCH}"
+              echo "✅ Workflows committed to ${TARGET_REPO}@${TARGET_BRANCH}"
             else
               echo "❌ Branch ${TARGET_BRANCH} not found in ${TARGET_REPO}"
               exit 1
@@ -70,10 +73,15 @@ jobs:
         run: |
           echo "✅ Installation complete!"
           echo ""
+          echo "Installed workflows:"
+          echo "  • .github/workflows/agentic-ready.yml   — issue trigger (run now)"
+          echo "  • .github/workflows/context-refresh.yml — weekly drift detection (runs Mondays)"
+          echo ""
           echo "Next steps:"
           echo "1. Go to: https://github.com/$TARGET_REPO"
           echo "2. Create an issue titled: [agentic-ready] Transform this repo"
-          echo "3. The workflow will trigger automatically"
+          echo "3. The workflow will trigger automatically and open a PR"
           echo ""
-          echo "Commit URL:"
-          echo "https://github.com/$TARGET_REPO/blob/$TARGET_BRANCH/.github/workflows/agentic-ready.yml"
+          echo "Files:"
+          echo "  https://github.com/$TARGET_REPO/blob/$TARGET_BRANCH/.github/workflows/agentic-ready.yml"
+          echo "  https://github.com/$TARGET_REPO/blob/$TARGET_BRANCH/.github/workflows/context-refresh.yml"

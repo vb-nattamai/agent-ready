@@ -129,7 +129,8 @@ agent-ready/
 ├── prompts/
 │   └── repo-to-agentic-universal.md   # Universal LLM prompt
 ├── templates/
-│   ├── install-workflow.yml           # Template users copy into their repos (Path A trigger)
+│   ├── install-workflow.yml           # Installed into target repos: issue trigger (Path A)
+│   ├── context-refresh-workflow.yml   # Installed into target repos: weekly drift detection
 │   ├── agent-context.template.json    # Repo context map template
 │   ├── AGENTS.template.md             # GitHub/OpenAI agent instructions
 │   ├── CLAUDE.template.md             # Claude agent instructions
@@ -185,7 +186,8 @@ Triggered manually from the **Actions tab** in this repo. Pushes the issue-trigg
 1. Validates the `owner/repo` format
 2. Clones the target repo using `INSTALL_TOKEN` (needs `repo` + `workflow` scopes)
 3. Copies `templates/install-workflow.yml` → `.github/workflows/agentic-ready.yml`
-4. Commits and pushes directly to the target branch
+4. Copies `templates/context-refresh-workflow.yml` → `.github/workflows/context-refresh.yml`
+5. Commits and pushes directly to the target branch
 
 **Requires:** `INSTALL_TOKEN` secret set in this repo (PAT with `repo` + `workflow` scopes on the target org).
 
@@ -193,28 +195,30 @@ After running, open an issue in the target repo titled `[agentic-ready] Transfor
 
 ---
 
-### `context-refresh.yml` — Weekly drift detection
+### `context-refresh.yml` — Reusable drift detector
 
-Runs automatically **every Monday at 09:00 UTC** (or manually via the Actions tab). Detects when `agent-context.json` has drifted from the current codebase state.
+This workflow serves two purposes:
+
+**1. In this repo (agent-ready itself):** Runs on schedule (Monday 09:00 UTC) and via manual dispatch to keep agent-ready's own `agent-context.json` fresh. Useful when testing the workflow itself.
+
+**2. In target repos:** Invoked via `workflow_call` from `templates/context-refresh-workflow.yml`, which `install-to-repo.yml` pushes into target repos. This is the primary purpose — every transformed repo gets weekly drift detection automatically.
 
 **What it does:**
-1. Runs `run_transformer.py --only context --force --quiet` against the repo
+1. Runs `run_transformer.py --only context --force --quiet` against the calling repo
 2. Checks `git diff agent-context.json`
 3. If **no drift**: prints "✅ up to date" and exits cleanly
 4. If **drift detected**: opens a PR with just the updated `agent-context.json` for human review
 
-**Use this for:** repos where developers aren't running pre-commit hooks locally — ensures agent context stays fresh even without any manual action.
-
 ---
 
-### `test-dry-run.yml` — Manual preview (nothing is written)
+### `test-dry-run.yml` — Preview against any target repo
 
-Triggered manually from the **Actions tab**. Runs the transformer in read-only mode against any repo — nothing is committed, nothing is overwritten.
+Triggered manually from the **Actions tab**. Runs the transformer in read-only mode against any repo — nothing is committed, nothing is overwritten. Pass `owner/repo` to preview a target repo; leaving it as `.` just runs a smoke test against agent-ready itself.
 
 **Inputs:**
 | Input | Default | Purpose |
 |---|---|---|
-| `target_repo` | `.` (this repo) | Any `owner/repo`, or `.` to analyse agent-ready itself |
+| `target_repo` | `.` _(smoke test of agent-ready)_ | Set to `owner/repo` to preview a target before triggering real transformation |
 | `verify` | `false` | Run LLM verification after dry-run (requires `ANTHROPIC_API_KEY` secret) |
 
 **What it does:**
@@ -223,7 +227,7 @@ Triggered manually from the **Actions tab**. Runs the transformer in read-only m
 3. Optionally verifies the generated context is correct using Claude Haiku
 4. Prints next-step instructions in the summary
 
-**Use this for:** previewing what a transformation will do before committing, or as a CI check that confirms context is still valid.
+**Typical usage:** before opening a `[agentic-ready]` issue in a target repo, run this pointed at that repo to confirm what will be generated with zero side effects.
 
 ---
 
@@ -250,11 +254,15 @@ Runs automatically on every push to `main`. Parses commit messages to decide whe
 
 ---
 
-### `templates/install-workflow.yml` — Template for target repos
+### Templates installed into target repos
 
-This is **not** a workflow in this repo — it's the file that gets copied into target repos by `install-to-repo.yml` (or manually by users following Path A in the README).
+These files are not workflows in this repo — they are pushed into target repos by `install-to-repo.yml` (or copied manually):
 
-Once installed as `.github/workflows/agentic-ready.yml` in a target repo, it listens for issues titled `[agentic-ready]` and calls `reusable-transformer.yml` via `workflow_call`.
+**`templates/install-workflow.yml`** → `.github/workflows/agentic-ready.yml` in target repo
+Listens for issues titled `[agentic-ready]` and calls `reusable-transformer.yml` via `workflow_call`. This is the main trigger (Path A).
+
+**`templates/context-refresh-workflow.yml`** → `.github/workflows/context-refresh.yml` in target repo
+Runs every Monday and calls `context-refresh.yml` via `workflow_call`. Keeps `agent-context.json` fresh after the initial transformation without any manual action.
 
 ---
 
@@ -267,6 +275,8 @@ python scripts/run_transformer.py --target /path/to/repo
 ```
 
 Scans the repo and generates all applicable files, prints 100-point readiness score.
+
+> **No LLM required.** The transformer is pure static analysis — it reads your files, detects languages, parses build configs, and generates templates without any API calls. Zero cost, works fully offline. An LLM (Claude Haiku) is only invoked if you explicitly pass `--verify`.
 
 ### Mode 2: Selective Generation
 
@@ -292,21 +302,21 @@ python scripts/run_transformer.py --target /path/to/repo --dry-run
 
 Shows what would be generated without writing any files. Perfect for testing!
 
-### Mode 4: Quality Verification (LLM-Based)
+### Mode 4: Optional LLM Verification
 
 ```bash
-# Verify generated context with Claude Haiku
+# Verify generated context with Claude Haiku (optional — requires API key)
 python scripts/run_transformer.py --target /path/to/repo --verify
 ```
 
-Validates that an LLM can correctly parse:
-- `entry_point` exists on disk
-- `test_command` is executable
-- `primary_language` matches actual codebase
+Asks Claude Haiku to cross-check that the generated `agent-context.json` is accurate:
+- Does `entry_point` actually exist on disk?
+- Is `test_command` executable?
+- Does `primary_language` match the actual codebase?
 
 Exit code 0 = context is valid. Use as a CI gate.
 
-**Requires:** `ANTHROPIC_API_KEY` environment variable
+**Requires:** `ANTHROPIC_API_KEY` environment variable. The base transformer never calls any LLM — this step is entirely optional.
 
 ### Mode 5: Keep Context Fresh (Automatic)
 
@@ -1022,21 +1032,20 @@ git -C /path/to/your-repo config agentic.toolkit-path /path/to/agent-ready
 
 **Weekly CI refresh (recommended for teams)**
 
-Copy `.github/workflows/context-refresh.yml` into your repo:
+If you used `install-to-repo.yml` to set up the repo, this is already installed as `.github/workflows/context-refresh.yml` in the target repo. If you set up manually, copy `templates/context-refresh-workflow.yml` into `.github/workflows/context-refresh.yml`:
 
 ```yaml
-name: Context Refresh — Weekly
+name: AgentReady — Context Refresh
 on:
   schedule:
-    - cron: '0 9 * * 1'  # Monday 09:00 UTC
-perms:
-  contents: write
-  pull-requests: write
+    - cron: '0 9 * * 1'   # Every Monday at 09:00 UTC
+  workflow_dispatch:
 jobs:
   refresh:
+    permissions:
+      contents: write
+      pull-requests: write
     uses: vb-nattamai/agent-ready/.github/workflows/context-refresh.yml@main
-    with:
-      schedule: 'weekly'
     secrets: inherit
 ```
 
@@ -1130,16 +1139,16 @@ python scripts/run_transformer.py --target /path/to/repo --install-hooks
 Automatically refreshes the **dynamic section** on every commit (module_layout, domain_concepts, agent_capabilities). The **static section** (your manual edits) is never touched.
 
 ### 3️⃣ **Freshness** — Weekly CI Refresh
-Scheduled workflow that detects drift and opens PRs:
+Scheduled workflow that detects drift and opens PRs. Installed automatically into target repos by `install-to-repo.yml` as `.github/workflows/context-refresh.yml`, which calls `context-refresh.yml` in agent-ready via `workflow_call`:
 ```yaml
 on:
   schedule:
     - cron: '0 9 * * 1'  # Monday 09:00 UTC
 ```
-See `.github/workflows/context-refresh.yml` for full details.
+See `templates/context-refresh-workflow.yml` for the template pushed into target repos.
 
-### 4️⃣ **Quality** — LLM Verification
-Validate that generated context is actually usable by an LLM:
+### 4️⃣ **Quality** — Optional LLM Verification
+The base transformer is **pure static analysis** — no LLM, no API key required. Optionally, validate generated context using Claude Haiku:
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 python scripts/run_transformer.py --target /path/to/repo --verify

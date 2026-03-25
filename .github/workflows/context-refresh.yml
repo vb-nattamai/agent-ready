@@ -1,9 +1,23 @@
 name: Refresh agent context
+# ─────────────────────────────────────────────────────────────────────────────
+# PURPOSE: Keeps agent-context.json up to date in the repo that runs this.
+#
+# HOW IT GETS THERE:
+#   - In agent-ready itself: triggered on schedule to keep agent-ready's own
+#     agent-context.json fresh.
+#   - In TARGET repos: installed by install-to-repo.yml (copies
+#     templates/context-refresh-workflow.yml) so each repo gets weekly
+#     drift detection after the initial transformation.
+#
+# It is also callable as a reusable workflow (workflow_call) so target repos
+# can invoke the latest version of this logic without copying the full script.
+# ─────────────────────────────────────────────────────────────────────────────
 
 on:
   schedule:
     - cron: '0 9 * * 1'   # Every Monday at 09:00 UTC
-  workflow_dispatch:        # Allow manual trigger
+  workflow_dispatch:        # Allow manual trigger from Actions tab
+  workflow_call:            # Allow target repos to call this directly
 
 jobs:
   refresh:
