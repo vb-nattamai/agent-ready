@@ -1,0 +1,87 @@
+name: Install Agentic Ready to Repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: 'Target repo (e.g., myorg/my-app)'
+        required: true
+        type: string
+      target_branch:
+        description: 'Branch to commit to'
+        required: false
+        default: 'main'
+        type: string
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Validate inputs
+        run: |
+          if [[ ! "${{ inputs.target_repo }}" =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+$ ]]; then
+            echo "❌ Invalid repo format. Use: owner/repo"
+            exit 1
+          fi
+          echo "✅ Installing to: ${{ inputs.target_repo }}@${{ inputs.target_branch }}"
+
+      - name: Create issue-trigger workflow in target repo
+        env:
+          GH_TOKEN: ${{ secrets.INSTALL_TOKEN }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          # Workflow content to install
+          WORKFLOW_CONTENT='name: Agentic Ready
+on:
+  issues:
+    types: [opened, labeled]
+jobs:
+  transform:
+    if: |
+      contains(github.event.issue.title, "[agentic-ready]") ||
+      contains(github.event.issue.labels.*.name, "agentic-ready")
+    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/reusable-transformer.yml@main
+    secrets: inherit
+'
+          
+          # Check if file already exists
+          EXISTING=$(gh api repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml 2>/dev/null || echo "")
+          
+          if [ -n "$EXISTING" ]; then
+            echo "ℹ️  Workflow already exists, updating..."
+            SHA=$(echo "$EXISTING" | jq -r '.sha')
+            gh api repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml \
+              --input - \
+              -X PUT \
+              -f "message=chore: update agentic-ready workflow" \
+              -f "content=$(echo -n "$WORKFLOW_CONTENT" | base64 -w0)" \
+              -f "sha=$SHA" \
+              -f "branch=$TARGET_BRANCH" >/dev/null
+          else
+            echo "📝 Creating new workflow..."
+            gh api repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml \
+              --input - \
+              -X PUT \
+              -f "message=feat: add agentic-ready automation workflow" \
+              -f "content=$(echo -n "$WORKFLOW_CONTENT" | base64 -w0)" \
+              -f "branch=$TARGET_BRANCH" >/dev/null
+          fi
+
+      - name: Report result
+        env:
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+        run: |
+          echo "✅ Installation complete!"
+          echo ""
+          echo "Next steps:"
+          echo "1. Go to: https://github.com/$TARGET_REPO"
+          echo "2. Create an issue titled: [agentic-ready] Transform this repo"
+          echo "3. The workflow will trigger automatically"
+          echo ""
+          echo "Commit URL:"
+          echo "https://github.com/$TARGET_REPO/blob/$TARGET_BRANCH/.github/workflows/agentic-ready.yml"

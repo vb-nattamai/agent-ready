@@ -374,6 +374,69 @@ Once generated, you can use the files in three ways:
 
 ---
 
+## 🚀 Automation — GitHub & Gitea
+
+No need to clone this toolkit manually! Use GitHub Actions or Gitea Actions to trigger transformations directly from issues or pipelines.
+
+### GitHub: Issue Trigger (Zero Setup)
+
+Copy this file to your repo:
+
+**Filename:** `.github/workflows/agentic-ready.yml`
+
+```yaml
+name: Agentic Ready
+on:
+  issues:
+    types: [opened, labeled]
+jobs:
+  transform:
+    if: |
+      contains(github.event.issue.title, '[agentic-ready]') ||
+      contains(github.event.issue.labels.*.name, 'agentic-ready')
+    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/reusable-transformer.yml@main
+    secrets: inherit
+```
+
+**To trigger:**
+1. Open an issue with title `[agentic-ready] Transform this repo`
+2. OR add the `agentic-ready` label to any issue
+3. The workflow runs, generates all files, and opens a PR automatically
+
+### GitHub: Reusable Workflow (For Pipelines)
+
+Add this to any workflow in your repo:
+
+```yaml
+- name: Make repo agentic-ready
+  uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/reusable-transformer.yml@main
+  with:
+    target_branch: main
+    only: ''  # or 'agents', 'tools', 'context', 'memory'
+    force: false
+  secrets:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+**Run on schedule:**
+```yaml
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly refresh
+```
+
+### Gitea: Same Approach
+
+Use `.gitea/workflows/` instead of `.github/workflows/` — same YAML syntax, same results.
+
+```yaml
+uses: your-gitea-instance.com/vb-nattamai/legacy-to-agentic-ready/.gitea/workflows/reusable-transformer.yml@main
+```
+
+**See [docs/automation.md](docs/automation.md) for complete guide.**
+
+---
+
 ## Supported Languages & Frameworks
 
 The transformer auto-detects:
