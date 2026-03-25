@@ -7,5 +7,9 @@ jobs:
     if: |
       contains(github.event.issue.title, '[agentic-ready]') ||
       contains(github.event.issue.labels.*.name, 'agentic-ready')
-    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/issue-trigger.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/reusable-transformer.yml@main
     secrets: inherit

@@ -504,6 +504,19 @@ The agent definition includes:
 
 Three paths depending on how much control you want. All produce the same result: a PR in your repo with all agentic scaffolding files.
 
+> **TL;DR — Just want it to work?**  
+> Copy [`templates/install-workflow.yml`](templates/install-workflow.yml) to `.github/workflows/agentic-ready.yml` in your repo → commit → open an issue titled `[agentic-ready] Transform this repo` → done.
+
+**Which path is right for you?**
+
+| | Path A | Path B | Path C |
+|---|---|---|---|
+| **Best for** | Solo devs, quick start | Teams, risk-averse orgs | Platform / many repos |
+| **Setup** | Copy 1 file, once | Copy 1 file, once | Run 1 workflow from here |
+| **Trigger** | Open an issue | Run from Actions tab | Automated |
+| **Preview before writing?** | No | Yes (dry-run) | No |
+| **Writes files to repo?** | Yes (via PR) | No (preview only) | Yes (via PR, after Path A) |
+
 ```
 Your legacy repo
       │
@@ -535,9 +548,11 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/issue-trigger.yml@main
+    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/reusable-transformer.yml@main
     secrets: inherit
 ```
+
+> **Tip:** This is the exact content of [`templates/install-workflow.yml`](templates/install-workflow.yml) in this repo — you can copy it directly.
 
 Commit and push this to your repo's default branch. That's all the setup needed.
 
@@ -762,7 +777,7 @@ Once merged, any AI agent tool pointed at your repo will automatically find and 
 Replace `.github/` with `.gitea/` — identical YAML syntax:
 
 ```yaml
-uses: your-gitea.com/vb-nattamai/legacy-to-agentic-ready/.gitea/workflows/issue-trigger.yml@main
+uses: your-gitea.com/vb-nattamai/legacy-to-agentic-ready/.gitea/workflows/reusable-transformer.yml@main
 ```
 
 **See [docs/automation.md](docs/automation.md) for Gitea-specific setup including collaborator check via API.**
