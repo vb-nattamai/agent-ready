@@ -68,6 +68,17 @@ jobs:
             fi
           fi
 
+      - name: Create AgentReady issue to trigger transformation
+        env:
+          GH_TOKEN: ${{ secrets.INSTALL_TOKEN || github.token }}
+          TARGET_REPO: ${{ inputs.target_repo }}
+        run: |
+          gh issue create \
+            --repo "$TARGET_REPO" \
+            --title "[agentic-ready] Transform this repository" \
+            --body "Automatically triggered by AgentReady installer. This will analyze the repository and generate AI-agent-ready context files." \
+            --label "agentic-ready"
+
       - name: Report result
         env:
           TARGET_REPO: ${{ inputs.target_repo }}
@@ -80,7 +91,6 @@ jobs:
           echo "  • .github/workflows/context-refresh.yml    — weekly drift detection"
           echo "  • .github/ISSUE_TEMPLATE/agentic-ready.yml — pre-filled issue form"
           echo ""
-          echo "Next steps:"
-          echo "1. Go to: https://github.com/$TARGET_REPO/issues/new?template=agentic-ready.yml"
-          echo "2. The form is pre-filled — just click Submit"
-          echo "3. The workflow triggers automatically and opens a PR"
+          echo "✅ Issue created automatically!"
+          echo "   The agentic-ready workflow should now be running."
+          echo "   Check: https://github.com/$TARGET_REPO/actions"
