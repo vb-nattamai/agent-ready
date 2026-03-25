@@ -500,21 +500,32 @@ The agent definition includes:
 
 ---
 
-## 🚀 Automation — GitHub & Gitea
+## 🚀 Using GitHub Issues & Actions to Transform a Legacy Repo
 
-No need to clone this toolkit manually! Use GitHub Actions or Gitea Actions to trigger transformations directly from issues or pipelines.
+Three paths depending on how much control you want. All produce the same result: a PR in your repo with all agentic scaffolding files.
 
-### GitHub: Issue Trigger (Zero Setup)
+```
+Your legacy repo
+      │
+      ├─ Path A: Open an issue            → Workflow triggers → PR opened automatically
+      ├─ Path B: Run workflow manually    → Dry-run first, then trigger real transformation
+      └─ Path C: Use install workflow     → One-time setup, then use Path A forever
+```
 
-Copy this file to your repo:
+---
 
-**Filename:** `.github/workflows/issue-trigger.yml`
+### Path A — Issue Trigger (Recommended, Zero Setup)
+
+**Step 1: Copy this file into your legacy repo**
+
+Create `.github/workflows/agentic-ready.yml` in your repo with:
 
 ```yaml
-name: Agentic Ready — Issue Trigger
+name: Agentic Ready
 on:
   issues:
     types: [opened, labeled]
+
 jobs:
   transform:
     if: |
@@ -525,96 +536,239 @@ jobs:
       pull-requests: write
       issues: write
     uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/issue-trigger.yml@main
-    with:
-      verify: true  # Run LLM verification on generated files
-      dry_run: false
     secrets: inherit
 ```
 
-**To trigger:**
-1. Open an issue with title `[agentic-ready] Transform this repo`
-2. OR add the `agentic-ready` label to any issue
-3. The workflow runs, generates all files, verifies context, and opens a PR automatically
+Commit and push this to your repo's default branch. That's all the setup needed.
 
-**Security:** Only repository collaborators can trigger this workflow.
+**Step 2: Open an issue to trigger the transformation**
 
-### GitHub: Test Dry-Run from Actions
+Go to your legacy repo → Issues → New Issue.
 
-Create a test workflow to preview changes before committing:
+Title it exactly:
+```
+[agentic-ready] Transform this repo
+```
 
-**Filename:** `.github/workflows/test-agentic-ready.yml`
+Submit the issue. The workflow triggers immediately.
+
+**Step 3: What happens automatically**
+
+```
+Issue opened
+    │
+    ├─ 1. Checks you are a repo collaborator (blocks unauthorized runs)
+    ├─ 2. Clones your repo
+    ├─ 3. Runs scanner: detects language, frameworks, build system, entry point
+    ├─ 4. Generates all agentic scaffolding files (see list below)
+    ├─ 5. Opens a PR titled "🤖 Add agentic-ready scaffolding"
+    └─ 6. Comments on your issue with a link to the PR
+```
+
+**Step 4: Review and merge the PR**
+
+The PR contains:
+
+| File | Purpose |
+|------|---------|
+| `agent-context.json` | Machine-readable repo map (static + dynamic sections) |
+| `AGENTS.md` | Agent contract — safe ops, forbidden ops, domain glossary |
+| `CLAUDE.md` | Claude Code auto-loaded context |
+| `system_prompt.md` | Universal system prompt for any LLM |
+| `mcp.json` | MCP server configuration |
+| `tools/<lang>Tool.*` | Tool scaffold in your repo's primary language |
+| `memory/schema.md` | Agent memory/state contract |
+
+Review each file, fill in any `<placeholder>` values, then merge.
+
+> **Tip:** The `static` section of `agent-context.json` is for your manual edits. The `dynamic` section is automatically refreshed. Edit `static` before merging.
+
+---
+
+### Path B — Dry-Run First (Recommended for Teams)
+
+Before opening an issue, preview exactly what will be generated without writing any files.
+
+**Step 1: Copy this file into your legacy repo**
+
+Create `.github/workflows/agentic-ready-preview.yml`:
 
 ```yaml
-name: Test — Agentic Ready (Dry Run)
+name: Agentic Ready — Preview
 on:
-  # Trigger manually from Actions tab
   workflow_dispatch:
-perms:
+    inputs:
+      verify:
+        description: "Verify context with Claude Haiku after generation"
+        required: false
+        default: "false"
+        type: boolean
+
+permissions:
   contents: read
+
 jobs:
-  dry-run:
+  preview:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
+
+      - uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-      
+          python-version: "3.11"
+
       - name: Clone transformer toolkit
-        run: |
-          git clone https://github.com/vb-nattamai/legacy-to-agentic-ready.git /tmp/toolkit
-      
-      - name: Run dry-run (no files written)
+        run: git clone --depth 1 https://github.com/vb-nattamai/legacy-to-agentic-ready.git /tmp/toolkit
+
+      - name: Dry-run (no files written)
         run: |
           python /tmp/toolkit/scripts/run_transformer.py \
             --target . \
             --dry-run \
+            --verbose
+
+      - name: Verify context (optional)
+        if: github.event.inputs.verify == 'true'
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "⚠️  ANTHROPIC_API_KEY not set — skipping verification"
+            exit 0
+          fi
+          python /tmp/toolkit/scripts/run_transformer.py \
+            --target . \
+            --dry-run \
             --verify
+        continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-**To test:**
-1. Go to Actions → "Test — Agentic Ready (Dry Run)"
-2. Click "Run workflow"
-3. Review the output — shows what would be generated without writing files
-4. If satisfied, open an issue with `[agentic-ready]` to trigger the real transformation
+**Step 2: Run it from the Actions tab**
 
-### GitHub: Reusable Workflow (For Pipelines)
-
-Add this to any workflow in your repo:
-
-```yaml
-- name: Make repo agentic-ready
-  uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/reusable-transformer.yml@main
-  with:
-    target_branch: main
-    only: ''  # or 'agents', 'tools', 'context', 'memory'
-    force: false
-  secrets:
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-**Run on schedule:**
-```yaml
-on:
-  schedule:
-    - cron: '0 0 * * 0'  # Weekly refresh
-```
-
-### Gitea: Same Approach
-
-Use `.gitea/workflows/` instead of `.github/workflows/` — same YAML syntax, same results.
-
-```yaml
-uses: your-gitea-instance.com/vb-nattamai/legacy-to-agentic-ready/.gitea/workflows/reusable-transformer.yml@main
-```
-
-**See [docs/automation.md](docs/automation.md) for complete guide.**
+1. Go to your repo → **Actions**
+2. Select **"Agentic Ready — Preview"**
+3. Click **Run workflow**
+4. Read the output — it shows every file that would be created and the 100-point readiness score
+5. If satisfied, proceed to Path A to trigger the real transformation
 
 ---
+
+### Path C — One-Click Install into Any Repo
+
+If you maintain many repos, use the install workflow to push the trigger file automatically.
+
+**From this (legacy-to-agentic-ready) repo:**
+
+1. Go to **Actions** → **"Install Agentic Ready to Repo"**
+2. Click **Run workflow**
+3. Enter your target repo: `myorg/my-legacy-api`
+4. Click **Run workflow**
+
+This creates `.github/workflows/agentic-ready.yml` in `myorg/my-legacy-api` via the GitHub API.
+
+Then follow Path A — open an issue in `myorg/my-legacy-api` to trigger the transformation.
+
+> **Requires:** A `INSTALL_TOKEN` secret in this repo with `repo` scope on the target org, or set `GITHUB_TOKEN` if the target is in the same org.
+
+---
+
+### What gets generated — full walk-through
+
+Here is what the resulting PR looks like for a Java/Maven legacy repo:
+
+**Detected:**
+```
+📁 Found 8 files
+🌐 Languages: Java
+🔧 Build system: maven
+📦 Entry point: src/main/java/com/example/App.java
+```
+
+**Generated files:**
+
+`agent-context.json` — static section you edit once, dynamic section auto-refreshed:
+```json
+{
+  "static": {
+    "repo_name": "my-api",
+    "primary_language": "Java",
+    "frameworks": ["Spring Boot"],
+    "entry_point": "src/main/java/com/example/App.java",
+    "restricted_write_paths": ["src/main/resources/db/migration"]
+  },
+  "dynamic": {
+    "last_scanned": "2026-03-25T09:00:00Z",
+    "module_layout": { "controllers": "src/main/java/.../controller" },
+    "test_command": "mvn test",
+    "build_command": "mvn package"
+  }
+}
+```
+
+`AGENTS.md` — defines what agents can and cannot do:
+```markdown
+## Safe operations
+- Read any file under src/
+- Call any tool defined in tools/
+- Suggest code changes as diffs without applying them
+
+## Forbidden operations
+- Write to src/main/resources/db/migration
+- Bypass service layer to access DB directly
+- Modify public API contracts without human approval
+```
+
+`CLAUDE.md` — auto-loaded by Claude Code on every session.
+
+`tools/ExampleTool.java` — scaffold in your repo's language, ready to implement.
+
+**Readiness score printed in the PR:**
+```
+──────────────────────────────────────
+  AGENTIC READINESS SCORE: 85 / 100
+──────────────────────────────────────
+  ✅ agent-context.json exists     +10
+  ✅ CLAUDE.md exists              +10
+  ✅ AGENTS.md exists              +10
+  ✅ tools/ has files              +10
+  ✅ Entry point exists            +10
+  ✅ Test command set              +10
+  ✅ CI config exists              +5
+  ⚠️  OpenAPI spec missing          +0
+  ⚠️  environment_variables empty   +0
+  💡 Add openapi.yml and fill in
+     environment_variables to reach 100
+──────────────────────────────────────
+```
+
+---
+
+### After merging the PR
+
+Once merged, any AI agent tool pointed at your repo will automatically find and use these files:
+
+| Tool | File it reads | How |
+|------|--------------|-----|
+| Claude Code | `CLAUDE.md` | Auto-loaded at session start |
+| GitHub Copilot | `.github/agents/*.agent.md` | Copilot Chat dropdown |
+| OpenAI Agents SDK | `agents/openai_agent.py` | `python agents/openai_agent.py` |
+| Any LLM | `system_prompt.md` | Paste as `system` parameter |
+| MCP clients | `mcp.json` | Loaded by MCP host |
+
+---
+
+### Gitea
+
+Replace `.github/` with `.gitea/` — identical YAML syntax:
+
+```yaml
+uses: your-gitea.com/vb-nattamai/legacy-to-agentic-ready/.gitea/workflows/issue-trigger.yml@main
+```
+
+**See [docs/automation.md](docs/automation.md) for Gitea-specific setup including collaborator check via API.**
+
+---
+
 
 ## � Agentic Readiness Score
 
