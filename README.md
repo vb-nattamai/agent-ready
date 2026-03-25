@@ -110,15 +110,26 @@ git push origin main
 agent-ready/
 ├── README.md                          # This file
 ├── LICENSE                            # MIT License
+├── VERSION                            # Current version string (e.g. 1.1.0)
+├── CHANGELOG.md                       # Release history (auto-updated by release.yml)
 ├── .github/
-│   └── agents/
-│       └── repo-to-agentic.agent.md   # GitHub Copilot agent definition
+│   ├── agents/
+│   │   └── repo-to-agentic.agent.md   # GitHub Copilot agent definition
+│   └── workflows/
+│       ├── reusable-transformer.yml   # Core transformer — called by other workflows
+│       ├── install-to-repo.yml        # One-click install into any target repo
+│       ├── context-refresh.yml        # Weekly scheduled context drift detection
+│       ├── test-dry-run.yml           # Manual dry-run preview (no files written)
+│       └── release.yml               # Semantic versioning & GitHub Releases on push
 ├── .claude/
 │   └── agents/
 │       └── repo-to-agentic.agent.md   # Claude Code agent definition
+├── docs/
+│   └── automation.md                  # Gitea-specific setup notes
 ├── prompts/
 │   └── repo-to-agentic-universal.md   # Universal LLM prompt
 ├── templates/
+│   ├── install-workflow.yml           # Template users copy into their repos (Path A trigger)
 │   ├── agent-context.template.json    # Repo context map template
 │   ├── AGENTS.template.md             # GitHub/OpenAI agent instructions
 │   ├── CLAUDE.template.md             # Claude agent instructions
@@ -129,8 +140,121 @@ agent-ready/
 │   ├── tool.java.template.java        # Java tool scaffold
 │   └── tool.go.template.go            # Go tool scaffold
 └── scripts/
-    └── run_transformer.py             # Main transformer script
+    ├── run_transformer.py             # Main transformer script (~850 lines)
+    └── generate_changelog.py          # Conventional-commit changelog generator
 ```
+
+---
+
+## Workflows
+
+This repo ships six GitHub Actions workflows. Three live **in this repo** (automation tooling), and one is a **template** users copy into their target repos.
+
+### `reusable-transformer.yml` — Core transformer (called, not triggered directly)
+
+The shared engine. Called by `install-to-repo.yml` and the trigger workflow installed in target repos.
+
+**Inputs:**
+| Input | Default | Purpose |
+|---|---|---|
+| `target_branch` | `main` | Branch the PR is opened against |
+| `only` | _(all)_ | Limit generation: `agents`, `tools`, `context`, or `memory` |
+| `force` | `false` | Overwrite existing generated files |
+| `issue_number` | _(none)_ | Issue to close after PR is opened |
+
+**What it does:**
+1. Checks out the target repo and clones `agent-ready` as `.agentic-toolkit`
+2. Runs `scripts/run_transformer.py --target .`
+3. Commits all generated files to a new `agentic-ready/...` branch
+4. Opens a PR titled "🤖 Add agentic-ready scaffolding"
+5. If `issue_number` is set: comments on the issue with the PR link, then closes it
+
+---
+
+### `install-to-repo.yml` — One-click install into any repo
+
+Triggered manually from the **Actions tab** in this repo. Pushes the issue-trigger workflow into any GitHub repo you own, so users don't have to copy files manually.
+
+**Inputs:**
+| Input | Required | Purpose |
+|---|---|---|
+| `target_repo` | ✅ | Target repo in `owner/repo` format |
+| `target_branch` | no | Branch to commit to (default: `main`) |
+
+**What it does:**
+1. Validates the `owner/repo` format
+2. Clones the target repo using `INSTALL_TOKEN` (needs `repo` + `workflow` scopes)
+3. Copies `templates/install-workflow.yml` → `.github/workflows/agentic-ready.yml`
+4. Commits and pushes directly to the target branch
+
+**Requires:** `INSTALL_TOKEN` secret set in this repo (PAT with `repo` + `workflow` scopes on the target org).
+
+After running, open an issue in the target repo titled `[agentic-ready] Transform this repo` to trigger the transformation.
+
+---
+
+### `context-refresh.yml` — Weekly drift detection
+
+Runs automatically **every Monday at 09:00 UTC** (or manually via the Actions tab). Detects when `agent-context.json` has drifted from the current codebase state.
+
+**What it does:**
+1. Runs `run_transformer.py --only context --force --quiet` against the repo
+2. Checks `git diff agent-context.json`
+3. If **no drift**: prints "✅ up to date" and exits cleanly
+4. If **drift detected**: opens a PR with just the updated `agent-context.json` for human review
+
+**Use this for:** repos where developers aren't running pre-commit hooks locally — ensures agent context stays fresh even without any manual action.
+
+---
+
+### `test-dry-run.yml` — Manual preview (nothing is written)
+
+Triggered manually from the **Actions tab**. Runs the transformer in read-only mode against any repo — nothing is committed, nothing is overwritten.
+
+**Inputs:**
+| Input | Default | Purpose |
+|---|---|---|
+| `target_repo` | `.` (this repo) | Any `owner/repo`, or `.` to analyse agent-ready itself |
+| `verify` | `false` | Run LLM verification after dry-run (requires `ANTHROPIC_API_KEY` secret) |
+
+**What it does:**
+1. Runs `run_transformer.py --dry-run --verbose`
+2. Prints every file that *would* be created/updated, with the predicted readiness score
+3. Optionally verifies the generated context is correct using Claude Haiku
+4. Prints next-step instructions in the summary
+
+**Use this for:** previewing what a transformation will do before committing, or as a CI check that confirms context is still valid.
+
+---
+
+### `release.yml` — Semantic versioning on every push to `main`
+
+Runs automatically on every push to `main`. Parses commit messages to decide whether to bump the version.
+
+**Version bump rules:**
+| Commit prefix | Bump |
+|---|---|
+| `feat:` | minor (e.g. 1.1.0 → 1.2.0) |
+| `fix:` | patch (e.g. 1.1.0 → 1.1.1) |
+| `BREAKING CHANGE:` | major (e.g. 1.1.0 → 2.0.0) |
+| `docs:`, `chore:`, `style:`, `test:`, `refactor:` | no bump |
+
+**What it does (when a bump is needed):**
+1. Updates `VERSION` file and version string in `scripts/run_transformer.py`
+2. Generates a changelog entry from commits since the last tag (via `scripts/generate_changelog.py`)
+3. Prepends the entry to `CHANGELOG.md`
+4. Commits as `chore: bump version to X.Y.Z [skip ci]` (the `[skip ci]` prevents a loop)
+5. Creates a git tag `vX.Y.Z` and a GitHub Release
+
+**Requires:** No secrets — uses the default `GITHUB_TOKEN` with `contents: write` permission.
+
+---
+
+### `templates/install-workflow.yml` — Template for target repos
+
+This is **not** a workflow in this repo — it's the file that gets copied into target repos by `install-to-repo.yml` (or manually by users following Path A in the README).
+
+Once installed as `.github/workflows/agentic-ready.yml` in a target repo, it listens for issues titled `[agentic-ready]` and calls `reusable-transformer.yml` via `workflow_call`.
 
 ---
 
