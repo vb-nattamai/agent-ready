@@ -41,9 +41,10 @@ jobs:
         run: |
           CONTENT=$(base64 -i toolkit/templates/install-workflow.yml | tr -d '\n')
 
-          # Get SHA if file already exists (empty string if not found or null)
-          SHA=$(gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" \
-            --jq '.sha // empty' 2>/dev/null || true)
+          # Get SHA only if the file exists (short-circuit: && means 404 skips python)
+          SHA=""
+          RESPONSE=$(gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" 2>/dev/null) && \
+            SHA=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))") || true
 
           if [ -n "$SHA" ]; then
             echo "ℹ️  Workflow already exists, updating..."
