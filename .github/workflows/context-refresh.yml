@@ -49,7 +49,12 @@ jobs:
       - name: Check for drift
         id: drift
         run: |
-          if git diff --quiet agent-context.json; then
+          # Ignore last_scanned timestamp — it changes every run and is not meaningful drift.
+          # Only open a PR if structural content (module_layout, commands, languages, etc.) changed.
+          MEANINGFUL_DIFF=$(git diff agent-context.json \
+            | grep -v '"last_scanned"' \
+            | grep -E '^[+-][^+-]' || true)
+          if [ -z "$MEANINGFUL_DIFF" ]; then
             echo "drifted=false" >> $GITHUB_OUTPUT
           else
             echo "drifted=true" >> $GITHUB_OUTPUT
