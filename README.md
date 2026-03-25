@@ -127,6 +127,213 @@ Copy `.github/agents/repo-to-agentic.agent.md` or `.claude/agents/repo-to-agenti
 
 ---
 
+## Usage Examples
+
+### Example 1: Java/Maven Project (bowling-kata)
+
+**Before:** A classic Java kata with just `pom.xml`, `README.md`, and source code.
+
+```bash
+cd ~/projects/bowling-kata
+python ~/legacy-to-agentic-ready/scripts/run_transformer.py --target .
+```
+
+**Output:**
+```
+╔══════════════════════════════════════════════╗
+║   🤖 Repo-to-Agentic Transformer v1.0.0     ║
+╚══════════════════════════════════════════════╝
+
+🔍 Analyzing repository: /path/to/bowling-kata
+  📁 Found 5 files
+  🌐 Languages: Java
+  🔧 Build system: maven
+
+  ✅ Created: agent-context.json
+  ✅ Created: AGENTS.md
+  ✅ Created: CLAUDE.md
+  ✅ Created: system_prompt.md
+  ✅ Created: mcp.json
+  ✅ Created: tools/ExampleTool.java
+
+──────────────────────────────────────────────
+✅ Transformation Complete
+──────────────────────────────────────────────
+  Project:    bowling-kata
+  Languages:  Java
+  Frameworks: None detected
+  Build:      maven
+
+  Generated Files:
+    ✓ agent-context.json
+    ✓ AGENTS.md
+    ✓ CLAUDE.md
+    ✓ system_prompt.md
+    ✓ mcp.json
+    ✓ tools/ExampleTool.java
+
+  No existing files were modified.
+```
+
+**What was generated:**
+
+1. **AGENTS.md** — Copilot/OpenAI agent instructions:
+   ```markdown
+   # AGENTS.md — bowling-kata
+   ## Project Overview
+   **bowling-kata** — Uncle Bob's classic kata...
+   
+   - **Primary Languages:** Java
+   - **Build System:** maven
+   
+   ## Commands
+   ```
+   mvn install              # Install dependencies
+   mvn package              # Build
+   mvn test                 # Test
+   mvn exec:java            # Run
+   ```
+   ```
+
+2. **CLAUDE.md** — Claude Code instructions with DO's and DON'Ts:
+   ```markdown
+   # CLAUDE.md — bowling-kata
+   ## Critical Commands
+   ```
+   mvn install              # Install dependencies
+   mvn package              # Build
+   mvn test                 # Test
+   ```
+   
+   ## Rules — ALWAYS Follow
+   1. Always run `mvn test` after changes
+   2. Always run `mvn checkstyle:check` before committing
+   3. Use PascalCase for all new files
+   ...
+   ```
+
+3. **agent-context.json** — Machine-readable metadata:
+   ```json
+   {
+     "project_name": "bowling-kata",
+     "primary_languages": ["Java"],
+     "build_system": "maven",
+     "commands": {
+       "install": "mvn install",
+       "build": "mvn package",
+       "test": "mvn test"
+     },
+     "conventions": {
+       "naming": "PascalCase",
+       "structure": "single-package"
+     }
+   }
+   ```
+
+4. **system_prompt.md** — Universal LLM prompt with full context
+5. **mcp.json** — MCP server configuration for Claude
+6. **tools/ExampleTool.java** — Java tool template scaffold
+
+**After pushing to GitHub:**
+```bash
+git add -A
+git commit -m "feat: Add AI-agent-ready scaffolding"
+git push origin main
+```
+
+Now when you use Claude Code, GitHub Copilot, or any AI agent on this repo, they'll have:
+- ✅ Exact build commands that work
+- ✅ Correct file paths (no hallucinations)
+- ✅ Code conventions to follow
+- ✅ Known pitfalls to avoid
+- ✅ Testing strategies
+
+### Example 2: Python Project (selective generation)
+
+```bash
+# Only generate agent instructions, not tool templates
+python ~/legacy-to-agentic-ready/scripts/run_transformer.py --target /path/to/fastapi-app --only agents
+```
+
+Output:
+```
+✅ Transformation Complete
+──────────────────────────────────────────────
+  Project:    fastapi-app
+  Languages:  Python
+  Frameworks: FastAPI
+  Build:      pip
+
+  Generated Files:
+    ✓ AGENTS.md
+    ✓ CLAUDE.md
+    ✓ system_prompt.md
+```
+
+### Example 3: Dry-run (preview without writing)
+
+```bash
+python ~/legacy-to-agentic-ready/scripts/run_transformer.py --target /path/to/myrepo --dry-run
+```
+
+Output:
+```
+[DRY RUN] Would create: AGENTS.md
+[DRY RUN] Would create: CLAUDE.md
+[DRY RUN] Would create: agent-context.json
+[DRY RUN] Would create: system_prompt.md
+[DRY RUN] Would create: mcp.json
+[DRY RUN] Would create: tools/example_tool.py
+```
+
+### Example 4: Node.js/TypeScript Project
+
+```bash
+python ~/legacy-to-agentic-ready/scripts/run_transformer.py --target /path/to/nextjs-app
+```
+
+**Detected:**
+- Languages: TypeScript, JavaScript
+- Frameworks: Next.js, React
+- Build: npm
+- Scripts: build, dev, test (from package.json)
+
+**Generated:**
+```
+✅ Transformation Complete
+──────────────────────────────────────────────
+  Project:    nextjs-app
+  Languages:  TypeScript, JavaScript
+  Frameworks: Next.js, React
+  Build:      npm
+
+  Generated Files:
+    ✓ AGENTS.md          (npm run build, npm test, npm run dev)
+    ✓ CLAUDE.md          (strict rules for React patterns)
+    ✓ system_prompt.md   (TypeScript/React conventions)
+    ✓ agent-context.json
+    ✓ mcp.json
+    ✓ tools/example_tool.ts
+```
+
+### After Generation: Using with AI Agents
+
+Once generated, you can use the files in three ways:
+
+#### 1. **GitHub Copilot / OpenAI**
+- Attach `AGENTS.md` to your conversation
+- Start with: "Using this context, help me build a new feature"
+
+#### 2. **Claude Code / Anthropic**
+- Copy `CLAUDE.md` into your Claude Chat context
+- Claude will follow the rules automatically
+
+#### 3. **Any LLM** (ChatGPT, Gemini, Llama, etc.)
+- Use the `system_prompt.md` as your system prompt
+- Full context with exact commands and conventions
+
+---
+
 ## Supported Languages & Frameworks
 
 The transformer auto-detects:
