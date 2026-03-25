@@ -16,6 +16,20 @@ jobs:
       issues: write
     
     steps:
+      - name: Check actor is a repo collaborator
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.actor
+            });
+            const allowed = ['admin', 'write', 'maintain'];
+            if (!allowed.includes(perm.permission)) {
+              core.setFailed(`@${context.actor} does not have write access. Transformation skipped.`);
+            }
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -110,46 +124,15 @@ jobs:
           
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
 
-      - name: Check actor is a repo collaborator
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              username: context.actor
-            });
-            const allowed = ['admin', 'write', 'maintain'];
-            if (!allowed.includes(perm.permission)) {
-              core.setFailed(`@${context.actor} does not have write access. Transformation skipped.`);
-            }
-
       - name: Comment on issue
         if: steps.transform.outputs.generated == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ steps.pr.outputs.pr_url }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
         run: |
-          BODY_TEXT=$(cat <<'EOF'
-🤖 **Agentic Ready Transformation Started**
-
-I've analysed this repository and generated all AI agent scaffolding files.
-
-**Pull Request:** ${{ steps.pr.outputs.pr_url }}
-
-**What was generated:**
-- 📝 **CLAUDE.md** — Claude Code context
-- 📋 **AGENTS.md** — Agent contract
-- 📊 **agent-context.json** — Machine-readable repo map
-- 💬 **agents/system_prompt.md** — Universal LLM system prompt
-- 🔗 **mcp.json** — MCP server config
-- 🛠️  **tools/** — Tool scaffolds for detected language(s)
-- 📚 **memory/schema.md** — Memory schema
-
-Review the PR, adjust any placeholder values, and merge when ready.
-EOF
-          )
-          gh issue comment ${{ github.event.issue.number }} --body "$BODY_TEXT"
+          printf '🤖 **Agentic Ready Transformation Complete**\n\nPull Request: %s\n\nGenerated files:\n- CLAUDE.md, AGENTS.md, agent-context.json, system_prompt.md, mcp.json, tools/, memory/schema.md\n\nReview the PR, adjust placeholder values, and merge when ready.\n' "$PR_URL" > /tmp/issue_body.txt
+          gh issue comment "$ISSUE_NUM" --body-file /tmp/issue_body.txt
 
       - name: Add success label
         if: steps.transform.outputs.generated == 'true'
@@ -160,16 +143,13 @@ EOF
           gh issue edit ${{ github.event.issue.number }} --add-label "agentic-ready-complete"
 
       - name: Handle transformation failure
-        if: failure() && steps.transform.outputs.generated != 'false'
+        if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ISSUE_NUM: ${{ github.event.issue.number }}
         run: |
-          gh label create agentic-ready-failed -c "f44336" -d "Agentic ready transformation failed" 2>/dev/null || true
-          FAILURE_TEXT=$(cat <<'EOF'
-❌ **Agentic Ready Transformation Failed**
-
-The transformer encountered an error. Please check the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
-EOF
-          )
-          gh issue comment ${{ github.event.issue.number }} --body "$FAILURE_TEXT"
-          gh issue edit ${{ github.event.issue.number }} --add-label "agentic-ready-failed"
+          gh label create agentic-ready-failed --color "f44336" --description "Agentic ready transformation failed" 2>/dev/null || true
+          printf '❌ **Agentic Ready Transformation Failed**\n\nSee the [workflow run](%s) for details.\n' "$RUN_URL" > /tmp/fail_body.txt
+          gh issue comment "$ISSUE_NUM" --body-file /tmp/fail_body.txt || true
+          gh issue edit "$ISSUE_NUM" --add-label "agentic-ready-failed" || true

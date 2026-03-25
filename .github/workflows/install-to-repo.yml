@@ -22,53 +22,44 @@ jobs:
     steps:
       - name: Validate inputs
         run: |
-          if [[ ! "${{ inputs.target_repo }}" =~ ^[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+$ ]]; then
+          if [[ ! "${{ inputs.target_repo }}" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
             echo "❌ Invalid repo format. Use: owner/repo"
             exit 1
           fi
           echo "✅ Installing to: ${{ inputs.target_repo }}@${{ inputs.target_branch }}"
 
+      - name: Checkout toolkit (for workflow template)
+        uses: actions/checkout@v4
+        with:
+          path: toolkit
+
       - name: Create issue-trigger workflow in target repo
         env:
-          GH_TOKEN: ${{ secrets.INSTALL_TOKEN }}
+          GH_TOKEN: ${{ secrets.INSTALL_TOKEN || github.token }}
           TARGET_REPO: ${{ inputs.target_repo }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
         run: |
-          # Workflow content to install
-          WORKFLOW_CONTENT='name: Agentic Ready
-on:
-  issues:
-    types: [opened, labeled]
-jobs:
-  transform:
-    if: |
-      contains(github.event.issue.title, "[agentic-ready]") ||
-      contains(github.event.issue.labels.*.name, "agentic-ready")
-    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/reusable-transformer.yml@main
-    secrets: inherit
-'
-          
+          CONTENT=$(base64 -i toolkit/templates/install-workflow.yml | tr -d '\n')
+
           # Check if file already exists
-          EXISTING=$(gh api repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml 2>/dev/null || echo "")
-          
+          EXISTING=$(gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" 2>/dev/null || echo "")
+
           if [ -n "$EXISTING" ]; then
             echo "ℹ️  Workflow already exists, updating..."
-            SHA=$(echo "$EXISTING" | jq -r '.sha')
-            gh api repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml \
-              --input - \
+            SHA=$(echo "$EXISTING" | python3 -c "import sys,json; print(json.load(sys.stdin)['sha'])")
+            gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" \
               -X PUT \
               -f "message=chore: update agentic-ready workflow" \
-              -f "content=$(echo -n "$WORKFLOW_CONTENT" | base64 -w0)" \
+              -f "content=$CONTENT" \
               -f "sha=$SHA" \
-              -f "branch=$TARGET_BRANCH" >/dev/null
+              -f "branch=$TARGET_BRANCH" > /dev/null
           else
             echo "📝 Creating new workflow..."
-            gh api repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml \
-              --input - \
+            gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" \
               -X PUT \
               -f "message=feat: add agentic-ready automation workflow" \
-              -f "content=$(echo -n "$WORKFLOW_CONTENT" | base64 -w0)" \
-              -f "branch=$TARGET_BRANCH" >/dev/null
+              -f "content=$CONTENT" \
+              -f "branch=$TARGET_BRANCH" > /dev/null
           fi
 
       - name: Report result

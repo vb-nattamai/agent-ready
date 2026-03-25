@@ -1,0 +1,11 @@
+name: Agentic Ready
+on:
+  issues:
+    types: [opened, labeled]
+jobs:
+  transform:
+    if: |
+      contains(github.event.issue.title, '[agentic-ready]') ||
+      contains(github.event.issue.labels.*.name, 'agentic-ready')
+    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/issue-trigger.yml@main
+    secrets: inherit

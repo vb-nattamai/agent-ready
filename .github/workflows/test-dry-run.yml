@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       target_repo:
-        description: Target repository (default: this repo)
+        description: "Target repository to analyse (default: this repo)"
         required: false
         default: .
         type: string
@@ -45,12 +45,16 @@ jobs:
       - name: Run transformer in dry-run mode (no files written)
         run: |
           cd toolkit
-          TARGET_PATH="${{ github.event.inputs.target_repo == '.' && '.' || '../target' }}"
-          
+          if [ "${{ github.event.inputs.target_repo }}" = "." ]; then
+            TARGET_PATH="."
+          else
+            TARGET_PATH="../target"
+          fi
+
           echo "🔍 Analyzing repository: $TARGET_PATH"
           echo "📋 Dry-run mode enabled (no files will be written)"
           echo ""
-          
+
           python scripts/run_transformer.py \
             --target "$TARGET_PATH" \
             --dry-run \
@@ -60,15 +64,21 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
       - name: Run verification (optional)
-        if: ${{ github.event.inputs.verify == true && secrets.ANTHROPIC_API_KEY }}
+        if: github.event.inputs.verify == 'true'
         run: |
           cd toolkit
-          TARGET_PATH="${{ github.event.inputs.target_repo == '.' && '.' || '../target' }}"
-          
-          echo ""
+          if [ "${{ github.event.inputs.target_repo }}" = "." ]; then
+            TARGET_PATH="."
+          else
+            TARGET_PATH="../target"
+          fi
+
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "⚠️  ANTHROPIC_API_KEY not set, skipping verification"
+            exit 0
+          fi
+
           echo "✅ Verifying generated context with Claude Haiku..."
-          echo ""
-          
           python scripts/run_transformer.py \
             --target "$TARGET_PATH" \
             --dry-run \
