@@ -42,6 +42,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install agent-ready in development mode
+        run: |
+          cd toolkit
+          pip install -e .
+
       - name: Run transformer in dry-run mode (no files written)
         run: |
           cd toolkit

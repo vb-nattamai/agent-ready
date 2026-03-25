@@ -10,7 +10,6 @@ build/
 Thumbs.db
 .venv/
 venv/
-.idea/
 .vscode/
 *.log
 .pytest_cache/

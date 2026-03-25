@@ -27,6 +27,10 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install agent-ready in development mode
+        run: |
+          pip install -e .
+
       - name: Parse commits & determine version
         id: version
         run: |
