@@ -2,8 +2,8 @@
 # Snippet for manual pre-commit hook installation
 # If you already have a pre-commit hook, append the contents of this file
 
-# Installed by legacy-to-agentic-ready — keeps agent-context.json fresh.
-# Re-scans only if source files changed. Fails commit if context is stale.
+# Installed by AgentReady (https://github.com/vb-nattamai/agent-ready)
+# Keeps agent-context.json fresh — re-scans only if source files changed.
 
 CHANGED=$(git diff --cached --name-only | grep -E '\.(py|ts|js|java|go|rs|cs|rb)$')
 if [ -z "$CHANGED" ]; then
@@ -13,7 +13,7 @@ fi
 TOOLKIT=$(git config --get agentic.toolkit-path)
 if [ -z "$TOOLKIT" ]; then
   echo "[agentic-ready] Skipping context refresh — agentic.toolkit-path not set."
-  echo "  Run: git config agentic.toolkit-path /path/to/legacy-to-agentic-ready"
+  echo "  Run: git config agentic.toolkit-path /path/to/agent-ready"
   exit 0
 fi
 

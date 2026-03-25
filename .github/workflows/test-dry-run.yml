@@ -24,7 +24,7 @@ jobs:
     name: Preview Agentic Transformation
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout legacy-to-agentic-ready
+      - name: Checkout agent-ready
         uses: actions/checkout@v4
         with:
           path: toolkit

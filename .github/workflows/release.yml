@@ -92,8 +92,11 @@ jobs:
         if: steps.version.outputs.bump != 'none'
         run: |
           echo "${{ steps.version.outputs.new_version }}" > VERSION
-          sed -i 's/"version": "[0-9]*\.[0-9]*\.[0-9]*"/"version": "${{ steps.version.outputs.new_version }}"/' scripts/run_transformer.py
-          echo "✅ Updated VERSION and scripts/run_transformer.py to v${{ steps.version.outputs.new_version }}"
+          # Update canonical version in the Python package
+          sed -i 's/__version__ = "[0-9]*\.[0-9]*\.[0-9]*"/__version__ = "${{ steps.version.outputs.new_version }}"/' src/agent_ready/__init__.py
+          # Update embedded version string in cli.py (banner + mcp.json output)
+          sed -i 's/"version": "[0-9]*\.[0-9]*\.[0-9]*"/"version": "${{ steps.version.outputs.new_version }}"/' src/agent_ready/cli.py
+          echo "✅ Updated VERSION, src/agent_ready/__init__.py, and src/agent_ready/cli.py to v${{ steps.version.outputs.new_version }}"
 
       - name: Generate changelog section
         if: steps.version.outputs.bump != 'none'
@@ -123,7 +126,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add VERSION scripts/run_transformer.py CHANGELOG.md
+          git add VERSION src/agent_ready/__init__.py src/agent_ready/cli.py CHANGELOG.md
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]"
           git push origin main
 

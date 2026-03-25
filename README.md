@@ -114,7 +114,7 @@ agent-ready/
 ├── CHANGELOG.md                       # Release history (auto-updated by release.yml)
 ├── .github/
 │   ├── agents/
-│   │   └── repo-to-agentic.agent.md   # GitHub Copilot agent definition
+│   │   └── agent-ready.agent.md        # GitHub Copilot agent definition
 │   └── workflows/
 │       ├── reusable-transformer.yml   # Core transformer — called by other workflows
 │       ├── install-to-repo.yml        # One-click install into any target repo
@@ -123,14 +123,14 @@ agent-ready/
 │       └── release.yml               # Semantic versioning & GitHub Releases on push
 ├── .claude/
 │   └── agents/
-│       └── repo-to-agentic.agent.md   # Claude Code agent definition
+│       └── agent-ready.agent.md        # Claude Code agent definition
 ├── docs/
 │   └── automation.md                  # Gitea-specific setup notes
 ├── prompts/
-│   └── repo-to-agentic-universal.md   # Universal LLM prompt
-├── templates/
+│   └── agent-ready-universal.md        # Universal LLM prompt
 │   ├── install-workflow.yml           # Installed into target repos: issue trigger (Path A)
 │   ├── context-refresh-workflow.yml   # Installed into target repos: weekly drift detection
+│   ├── issue-template-agentic-ready.yml # Installed into target repos: pre-filled issue form
 │   ├── agent-context.template.json    # Repo context map template
 │   ├── AGENTS.template.md             # GitHub/OpenAI agent instructions
 │   ├── CLAUDE.template.md             # Claude agent instructions
@@ -187,7 +187,8 @@ Triggered manually from the **Actions tab** in this repo. Pushes the issue-trigg
 2. Clones the target repo using `INSTALL_TOKEN` (needs `repo` + `workflow` scopes)
 3. Copies `templates/install-workflow.yml` → `.github/workflows/agentic-ready.yml`
 4. Copies `templates/context-refresh-workflow.yml` → `.github/workflows/context-refresh.yml`
-5. Commits and pushes directly to the target branch
+5. Copies `templates/issue-template-agentic-ready.yml` → `.github/ISSUE_TEMPLATE/agentic-ready.yml`
+6. Commits and pushes directly to the target branch
 
 **Requires:** `INSTALL_TOKEN` secret set in this repo (PAT with `repo` + `workflow` scopes on the target org).
 
@@ -263,6 +264,9 @@ Listens for issues titled `[agentic-ready]` and calls `reusable-transformer.yml`
 
 **`templates/context-refresh-workflow.yml`** → `.github/workflows/context-refresh.yml` in target repo
 Runs every Monday and calls `context-refresh.yml` via `workflow_call`. Keeps `agent-context.json` fresh after the initial transformation without any manual action.
+
+**`templates/issue-template-agentic-ready.yml`** → `.github/ISSUE_TEMPLATE/agentic-ready.yml` in target repo
+A GitHub issue form with a pre-filled title (`[agentic-ready] Transform this repo`), a scope dropdown, a domain hints textarea, and a checklist. Ensures the trigger title is always correct and reminds users to open the issue **in their own repo, not in `agent-ready`**.
 
 ---
 
@@ -365,7 +369,7 @@ python ~/agent-ready/scripts/run_transformer.py --target .
 **Output:**
 ```
 ╔══════════════════════════════════════════════╗
-║   🤖 Repo-to-Agentic Transformer v1.0.0     ║
+║   🤖 AgentReady Transformer v1.1.1           ║
 ╚══════════════════════════════════════════════╝
 
 🔍 Analyzing repository: /path/to/bowling-kata
@@ -640,7 +644,9 @@ The agent definition includes:
 Three paths depending on how much control you want. All produce the same result: a PR in your repo with all agentic scaffolding files.
 
 > **TL;DR — Just want it to work?**  
-> Copy [`templates/install-workflow.yml`](templates/install-workflow.yml) to `.github/workflows/agentic-ready.yml` in your repo → commit → open an issue titled `[agentic-ready] Transform this repo` → done.
+> Run **"Install Agentic Ready to Repo"** from the [Actions tab in agent-ready](https://github.com/vb-nattamai/agent-ready/actions/workflows/install-to-repo.yml), enter your repo name → it pushes everything. Then open an issue **in your own repo** using the pre-filled form at `Issues → New Issue → 🤖 AgentReady — Transform this repo`.
+
+> ⚠️ **Do not open issues in `vb-nattamai/agent-ready`** — issues there do nothing. The trigger workflow must be installed in **your** repo.
 
 **Which path is right for you?**
 
@@ -666,43 +672,35 @@ Your legacy repo
 
 **Step 1: Copy this file into your legacy repo**
 
-Create `.github/workflows/agentic-ready.yml` in your repo with:
+Create `.github/workflows/agentic-ready.yml` in your repo:
 
-```yaml
-name: Agentic Ready
-on:
-  issues:
-    types: [opened, labeled]
+```bash
+# Copy directly from agent-ready
+curl -o .github/workflows/agentic-ready.yml \
+  https://raw.githubusercontent.com/vb-nattamai/agent-ready/main/templates/install-workflow.yml
 
-jobs:
-  transform:
-    if: |
-      contains(github.event.issue.title, '[agentic-ready]') ||
-      contains(github.event.issue.labels.*.name, 'agentic-ready')
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-    uses: vb-nattamai/agent-ready/.github/workflows/reusable-transformer.yml@main
-    with:
-      issue_number: ${{ github.event.issue.number }}
-    secrets: inherit
+# Also grab the issue form template (recommended)
+mkdir -p .github/ISSUE_TEMPLATE
+curl -o .github/ISSUE_TEMPLATE/agentic-ready.yml \
+  https://raw.githubusercontent.com/vb-nattamai/agent-ready/main/templates/issue-template-agentic-ready.yml
+
+git add .github/ && git commit -m "feat: add AgentReady trigger workflow" && git push
 ```
 
-> **Tip:** This is the exact content of [`templates/install-workflow.yml`](templates/install-workflow.yml) in this repo — you can copy it directly.
-
-Commit and push this to your repo's default branch. That's all the setup needed.
+> **Or use Path C** (Install workflow) to do all of the above automatically.
 
 **Step 2: Open an issue to trigger the transformation**
 
-Go to your legacy repo → Issues → New Issue.
+Go to **your repo** → Issues → New Issue.
 
-Title it exactly:
+If you installed the issue template, you'll see **"🤖 AgentReady — Transform this repo"** in the template list. Click it — the title is pre-filled and there's a checklist to guide you. Just click Submit.
+
+If you skipped the template, create an issue with this exact title:
 ```
 [agentic-ready] Transform this repo
 ```
 
-Submit the issue. The workflow triggers immediately.
+> ⚠️ **Open in YOUR repo, not in `vb-nattamai/agent-ready`.** Issues in agent-ready do not trigger transformations.
 
 **Step 3: What happens automatically**
 
@@ -834,14 +832,17 @@ If you maintain many repos, use the install workflow to push the trigger file au
 
 **From this (agent-ready) repo:**
 
-1. Go to **Actions** → **"Install Agentic Ready to Repo"**
+1. Go to **[Actions → "Install Agentic Ready to Repo"](https://github.com/vb-nattamai/agent-ready/actions/workflows/install-to-repo.yml)**
 2. Click **Run workflow**
 3. Enter your target repo: `myorg/my-legacy-api`
 4. Click **Run workflow**
 
-This creates `.github/workflows/agentic-ready.yml` in `myorg/my-legacy-api` via the GitHub API.
+This pushes three files into `myorg/my-legacy-api`:
+- `.github/workflows/agentic-ready.yml` — issue trigger
+- `.github/workflows/context-refresh.yml` — weekly drift detection
+- `.github/ISSUE_TEMPLATE/agentic-ready.yml` — pre-filled issue form
 
-Then follow Path A — open an issue in `myorg/my-legacy-api` to trigger the transformation.
+Then go to **`myorg/my-legacy-api` Issues → New Issue → "🤖 AgentReady — Transform this repo"** and click Submit.
 
 > **Requires:** A `INSTALL_TOKEN` secret in this repo with `repo` scope on the target org, or set `GITHUB_TOKEN` if the target is in the same org.
 

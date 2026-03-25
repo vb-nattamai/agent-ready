@@ -1,6 +1,6 @@
 ## 🤖 Agentic Ready Scaffolding
 
-This PR was generated automatically by [legacy-to-agentic-ready](https://github.com/vb-nattamai/agent-ready).
+This PR was generated automatically by [AgentReady](https://github.com/vb-nattamai/agent-ready).
 
 ### What was generated
 

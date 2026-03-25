@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/servers/main/schemas/mcp.schema.json",
-  "_generated_by": "legacy-to-agentic-ready",
+  "_generated_by": "AgentReady (https://github.com/vb-nattamai/agent-ready)",
   "_generated_at": "{{TIMESTAMP}}",
 
   "mcpServers": {

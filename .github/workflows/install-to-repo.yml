@@ -43,11 +43,13 @@ jobs:
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${TARGET_REPO}.git" target-repo
           cd target-repo
 
-          mkdir -p .github/workflows
+          mkdir -p .github/workflows .github/ISSUE_TEMPLATE
           # Issue trigger — opens a PR when [agentic-ready] issue is created
           cp ../toolkit/templates/install-workflow.yml .github/workflows/agentic-ready.yml
           # Weekly context refresh — detects agent-context.json drift every Monday
           cp ../toolkit/templates/context-refresh-workflow.yml .github/workflows/context-refresh.yml
+          # Issue form template — pre-fills title + checklist so trigger always fires correctly
+          cp ../toolkit/templates/issue-template-agentic-ready.yml .github/ISSUE_TEMPLATE/agentic-ready.yml
 
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
@@ -55,11 +57,11 @@ jobs:
           if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
             echo "ℹ️  Workflows already up to date, nothing to commit"
           else
-            git add .github/workflows/agentic-ready.yml .github/workflows/context-refresh.yml
+            git add .github/workflows/agentic-ready.yml .github/workflows/context-refresh.yml .github/ISSUE_TEMPLATE/agentic-ready.yml
             if git ls-remote --heads origin "refs/heads/${TARGET_BRANCH}" | grep -q "${TARGET_BRANCH}"; then
-              git commit -m "feat: add AgentReady automation workflows (trigger + context refresh)"
+              git commit -m "feat: add AgentReady automation workflows, context refresh, and issue template"
               git push origin "HEAD:${TARGET_BRANCH}"
-              echo "✅ Workflows committed to ${TARGET_REPO}@${TARGET_BRANCH}"
+              echo "✅ Files committed to ${TARGET_REPO}@${TARGET_BRANCH}"
             else
               echo "❌ Branch ${TARGET_BRANCH} not found in ${TARGET_REPO}"
               exit 1
@@ -73,15 +75,12 @@ jobs:
         run: |
           echo "✅ Installation complete!"
           echo ""
-          echo "Installed workflows:"
-          echo "  • .github/workflows/agentic-ready.yml   — issue trigger (run now)"
-          echo "  • .github/workflows/context-refresh.yml — weekly drift detection (runs Mondays)"
+          echo "Installed files:"
+          echo "  • .github/workflows/agentic-ready.yml       — issue trigger"
+          echo "  • .github/workflows/context-refresh.yml    — weekly drift detection"
+          echo "  • .github/ISSUE_TEMPLATE/agentic-ready.yml — pre-filled issue form"
           echo ""
           echo "Next steps:"
-          echo "1. Go to: https://github.com/$TARGET_REPO"
-          echo "2. Create an issue titled: [agentic-ready] Transform this repo"
-          echo "3. The workflow will trigger automatically and open a PR"
-          echo ""
-          echo "Files:"
-          echo "  https://github.com/$TARGET_REPO/blob/$TARGET_BRANCH/.github/workflows/agentic-ready.yml"
-          echo "  https://github.com/$TARGET_REPO/blob/$TARGET_BRANCH/.github/workflows/context-refresh.yml"
+          echo "1. Go to: https://github.com/$TARGET_REPO/issues/new?template=agentic-ready.yml"
+          echo "2. The form is pre-filled — just click Submit"
+          echo "3. The workflow triggers automatically and opens a PR"
