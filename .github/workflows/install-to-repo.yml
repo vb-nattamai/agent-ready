@@ -39,28 +39,18 @@ jobs:
           TARGET_REPO: ${{ inputs.target_repo }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
         run: |
-          CONTENT=$(base64 toolkit/templates/install-workflow.yml | tr -d '\n')
-
-          # Get SHA only if the file exists (short-circuit: && means 404 skips python)
           SHA=""
           RESPONSE=$(gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" 2>/dev/null) && \
             SHA=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))") || true
 
           if [ -n "$SHA" ]; then
             echo "ℹ️  Workflow already exists, updating..."
-            gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" \
-              -X PUT \
-              -f "message=chore: update agentic-ready workflow" \
-              -f "content=$CONTENT" \
-              -f "sha=$SHA" \
-              -f "branch=$TARGET_BRANCH" > /dev/null
+            python3 -c "import json,base64; c=base64.b64encode(open('toolkit/templates/install-workflow.yml','rb').read()).decode(); print(json.dumps({'message':'chore: update agentic-ready workflow','content':c,'sha':'$SHA','branch':'$TARGET_BRANCH'}))" \
+              | gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" -X PUT --input - > /dev/null
           else
             echo "📝 Creating new workflow..."
-            gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" \
-              -X PUT \
-              -f "message=feat: add agentic-ready automation workflow" \
-              -f "content=$CONTENT" \
-              -f "branch=$TARGET_BRANCH" > /dev/null
+            python3 -c "import json,base64; c=base64.b64encode(open('toolkit/templates/install-workflow.yml','rb').read()).decode(); print(json.dumps({'message':'feat: add agentic-ready automation workflow','content':c,'branch':'$TARGET_BRANCH'}))" \
+              | gh api "repos/$TARGET_REPO/contents/.github%2Fworkflows%2Fagentic-ready.yml" -X PUT --input - > /dev/null
           fi
 
       - name: Report result
