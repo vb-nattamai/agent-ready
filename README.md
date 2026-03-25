@@ -25,12 +25,15 @@ When you run the transformer on your repository, it produces:
 
 | File | Purpose | Platform |
 |------|---------|----------|
-| `AGENTS.md` | Agent instruction file | GitHub Copilot / OpenAI |
-| `CLAUDE.md` | Agent instruction file | Claude Code / Anthropic |
-| `system_prompt.md` | Universal system prompt | Any LLM |
-| `agent-context.json` | Machine-readable repo map | All platforms |
+| `AGENTS.md` | Agent instruction file with safe/forbidden operations | GitHub Copilot / OpenAI |
+| `CLAUDE.md` | Agent instruction file with module layout & rules | Claude Code / Anthropic |
+| `system_prompt.md` | Universal system prompt (works with any LLM) | Any LLM |
+| `agent-context.json` | Machine-readable repo map (static + dynamic sections) | All platforms |
 | `mcp.json` | MCP server configuration | Claude / MCP-compatible |
-| `tool.*.template.*` | Tool scaffolds (Python, TS, Java, Go) | All platforms |
+| `AGENTIC_READINESS.md` | Audit report with 100-point readiness score | Humans / CI gates |
+| `tools/<capability>_tool.*` | Tool scaffolds (Python, TS, Java, Go) | All platforms |
+| `memory/schema.md` | Memory/state contract for agent persistence | All platforms |
+| `.github/agents/<repo>.agent.md` | GitHub Copilot agent definition | VS Code Copilot |
 
 ---
 
@@ -138,7 +141,7 @@ legacy-to-agentic-ready/
 python scripts/run_transformer.py --target /path/to/repo
 ```
 
-Scans the repo and generates all applicable files.
+Scans the repo and generates all applicable files, prints 100-point readiness score.
 
 ### Mode 2: Selective Generation
 
@@ -151,19 +154,65 @@ python scripts/run_transformer.py --target /path/to/repo --only tools
 
 # Only generate the context map
 python scripts/run_transformer.py --target /path/to/repo --only context
+
+# Only generate memory schema
+python scripts/run_transformer.py --target /path/to/repo --only memory
 ```
 
-### Mode 3: Dry Run
+### Mode 3: Dry Run (Preview Without Writing)
 
 ```bash
 python scripts/run_transformer.py --target /path/to/repo --dry-run
 ```
 
-Shows what would be generated without writing any files.
+Shows what would be generated without writing any files. Perfect for testing!
 
-### Mode 4: Use as an AI Agent
+### Mode 4: Quality Verification (LLM-Based)
 
-Copy `.github/agents/repo-to-agentic.agent.md` or `.claude/agents/repo-to-agentic.agent.md` into your repo and let your AI agent run the transformation interactively.
+```bash
+# Verify generated context with Claude Haiku
+python scripts/run_transformer.py --target /path/to/repo --verify
+```
+
+Validates that an LLM can correctly parse:
+- `entry_point` exists on disk
+- `test_command` is executable
+- `primary_language` matches actual codebase
+
+Exit code 0 = context is valid. Use as a CI gate.
+
+**Requires:** `ANTHROPIC_API_KEY` environment variable
+
+### Mode 5: Keep Context Fresh (Automatic)
+
+```bash
+# Install pre-commit hook for automatic dynamic section refresh
+python scripts/run_transformer.py --target /path/to/repo --install-hooks
+
+# Specify where the toolkit lives (for hook to find it)
+git -C /path/to/repo config agentic.toolkit-path /path/to/legacy-to-agentic-ready
+```
+
+After this, whenever `.py`, `.ts`, `.js`, `.java`, `.go` files change:
+- Pre-commit hook runs automatically
+- Refreshes `agent-context.json` dynamic section only
+- Static section (manual edits) is never touched
+
+### Mode 6: Quiet Output (CI-Friendly)
+
+```bash
+# Suppress banner, only show file list
+python scripts/run_transformer.py --target /path/to/repo --quiet
+```
+
+Useful in CI pipelines to reduce noise.
+
+### Mode 7: Use as an AI Agent
+
+Copy `.github/agents/agentic-readiness-transformer.md` into your repo and let your AI agent run the transformation interactively. The agent definition includes:
+- 5-phase architecture (Audit, Core, Platform-Specific, Readiness, Validation)
+- Multi-language tool definitions
+- Security constraints and validation checklist
 
 ---
 
@@ -374,6 +423,83 @@ Once generated, you can use the files in three ways:
 
 ---
 
+## 🎯 CLI Reference
+
+Quick lookup for all transformer commands:
+
+```bash
+# Basic transformation
+python scripts/run_transformer.py --target /path/to/repo
+
+# Preview changes (no files written)
+python scripts/run_transformer.py --target /path/to/repo --dry-run
+
+# Verify context with Claude Haiku
+python scripts/run_transformer.py --target /path/to/repo --verify
+
+# Install pre-commit hooks for automatic dynamic refresh
+python scripts/run_transformer.py --target /path/to/repo --install-hooks
+
+# Only generate agents (no tools, context, memory)
+python scripts/run_transformer.py --target /path/to/repo --only agents
+
+# Only generate tools (no agents, context, memory)
+python scripts/run_transformer.py --target /path/to/repo --only tools
+
+# Suppress output (quiet mode for CI)
+python scripts/run_transformer.py --target /path/to/repo --quiet
+
+# Force overwrite existing files
+python scripts/run_transformer.py --target /path/to/repo --force
+
+# Verbose output (detailed logging)
+python scripts/run_transformer.py --target /path/to/repo --verbose
+
+# Help and available options
+python scripts/run_transformer.py --help
+```
+
+**Environment variables:**
+```bash
+# Optional: for LLM-enhanced verification
+export ANTHROPIC_API_KEY="sk-ant-..."
+export OPENAI_API_KEY="sk-..."
+export GOOGLE_API_KEY="..."
+
+# Optional: custom toolkit path for pre-commit hooks
+git config agentic.toolkit-path /path/to/legacy-to-agentic-ready
+```
+
+---
+
+## 🤖 Using the Transformer as an AI Agent
+
+The transformer itself is **agentic-ready**! Use it with Claude, OpenAI, or any LLM:
+
+```bash
+# Copy the agent definition to your repo
+cp .github/agents/agentic-readiness-transformer.md /path/to/target-repo/.github/agents/
+
+# Open in Claude Code
+# Claude will read the agent definition and understand how to run transformations
+```
+
+**Agent capabilities:**
+- 📊 **Audit phase:** Analyze repo structure, language, frameworks, entry points
+- 🔧 **Core files:** Generate universal agent context files (AGENTS.md, CLAUDE.md, system_prompt.md)
+- 🌐 **Platform files:** Create platform-specific agents (OpenAI, Gemini, VS Code Copilot, Claude)
+- ✅ **Validation:** Run security checks, constraint verification, cross-platform parity checks
+- 📈 **Scoring:** Calculate 100-point readiness and recommend improvements
+
+The agent definition includes:
+- **Phase 1:** Full repo audit checklist (identity, architecture, observability)
+- **Phase 2:** Universal core files (agent-context.json, AGENTS.md, tools, memory schema)
+- **Phase 3:** Platform-specific agent files (OpenAI SDK, Google ADK, VS Code, universal)
+- **Phase 4:** AGENTIC_READINESS.md with score and recommendations
+- **Phase 5:** Validation checklist (no invented paths, stack consistency, idempotency)
+
+---
+
 ## 🚀 Automation — GitHub & Gitea
 
 No need to clone this toolkit manually! Use GitHub Actions or Gitea Actions to trigger transformations directly from issues or pipelines.
@@ -382,10 +508,10 @@ No need to clone this toolkit manually! Use GitHub Actions or Gitea Actions to t
 
 Copy this file to your repo:
 
-**Filename:** `.github/workflows/agentic-ready.yml`
+**Filename:** `.github/workflows/issue-trigger.yml`
 
 ```yaml
-name: Agentic Ready
+name: Agentic Ready — Issue Trigger
 on:
   issues:
     types: [opened, labeled]
@@ -394,14 +520,67 @@ jobs:
     if: |
       contains(github.event.issue.title, '[agentic-ready]') ||
       contains(github.event.issue.labels.*.name, 'agentic-ready')
-    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/reusable-transformer.yml@main
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/issue-trigger.yml@main
+    with:
+      verify: true  # Run LLM verification on generated files
+      dry_run: false
     secrets: inherit
 ```
 
 **To trigger:**
 1. Open an issue with title `[agentic-ready] Transform this repo`
 2. OR add the `agentic-ready` label to any issue
-3. The workflow runs, generates all files, and opens a PR automatically
+3. The workflow runs, generates all files, verifies context, and opens a PR automatically
+
+**Security:** Only repository collaborators can trigger this workflow.
+
+### GitHub: Test Dry-Run from Actions
+
+Create a test workflow to preview changes before committing:
+
+**Filename:** `.github/workflows/test-agentic-ready.yml`
+
+```yaml
+name: Test — Agentic Ready (Dry Run)
+on:
+  # Trigger manually from Actions tab
+  workflow_dispatch:
+perms:
+  contents: read
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Clone transformer toolkit
+        run: |
+          git clone https://github.com/vb-nattamai/legacy-to-agentic-ready.git /tmp/toolkit
+      
+      - name: Run dry-run (no files written)
+        run: |
+          python /tmp/toolkit/scripts/run_transformer.py \
+            --target . \
+            --dry-run \
+            --verify
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+**To test:**
+1. Go to Actions → "Test — Agentic Ready (Dry Run)"
+2. Click "Run workflow"
+3. Review the output — shows what would be generated without writing files
+4. If satisfied, open an issue with `[agentic-ready]` to trigger the real transformation
 
 ### GitHub: Reusable Workflow (For Pipelines)
 
@@ -437,7 +616,53 @@ uses: your-gitea-instance.com/vb-nattamai/legacy-to-agentic-ready/.gitea/workflo
 
 ---
 
-## 🔄 Keeping context fresh
+## � Agentic Readiness Score
+
+Every run outputs a **100-point readiness score** based on:
+
+| Criterion | Points |
+|-----------|--------|
+| `agent-context.json` exists | 10 |
+| `CLAUDE.md` exists | 10 |
+| `AGENTS.md` exists | 10 |
+| `agents/system_prompt.md` exists | 5 |
+| `tools/` has ≥1 file | 10 |
+| Entry point file actually exists | 10 |
+| Test command is non-empty | 10 |
+| `restricted_write_paths` populated | 10 |
+| `environment_variables` populated | 10 |
+| `domain_concepts` has ≥3 entries | 5 |
+| OpenAPI spec exists | 5 |
+| CI config exists (.github/workflows/) | 5 |
+
+**Example output:**
+```
+──────────────────────────────────────
+  AGENTIC READINESS SCORE: 95 / 100
+──────────────────────────────────────
+  ✅ agent-context.json exists        +10
+  ✅ CLAUDE.md exists                 +10
+  ✅ AGENTS.md exists                 +10
+  ✅ agents/system_prompt.md exists   +5
+  ✅ tools/ has files                 +10
+  ✅ Entry point exists               +10
+  ✅ Test command set                 +10
+  ✅ restricted_write_paths set       +10
+  ✅ environment_variables set        +10
+  ✅ domain_concepts populated        +5
+  ⚠️  OpenAPI spec missing            +0
+  ✅ CI config exists                 +5
+  ─────────────────────────────────────
+  💡 To improve your score:
+     - Add OpenAPI/Swagger spec for API documentation
+──────────────────────────────────────
+```
+
+Use this to drive adoption — teams want high scores!
+
+---
+
+## �🔄 Keeping context fresh
 
 `agent-context.json` goes stale when your codebase changes. Three ways to keep it current:
 
@@ -446,10 +671,35 @@ uses: your-gitea-instance.com/vb-nattamai/legacy-to-agentic-ready/.gitea/workflo
 python scripts/run_transformer.py --target /path/to/your-repo --install-hooks
 git -C /path/to/your-repo config agentic.toolkit-path /path/to/legacy-to-agentic-ready
 ```
-Automatically refreshes the dynamic section of `agent-context.json` whenever source files change.
+✅ Automatically refreshes the **dynamic section** of `agent-context.json` whenever source files change.
+
+**What it does:**
+- Watches for changes to `.py`, `.ts`, `.js`, `.java`, `.go` files
+- On `git commit`, regenerates: `module_layout`, `domain_concepts`, `agent_capabilities`
+- Never modifies the `static` section (your manual edits are safe)
+- Blocks commit if verification fails (can be overridden with `--no-verify`)
 
 **Weekly CI refresh (recommended for teams)**
-Copy `.github/workflows/context-refresh.yml` into your repo. It runs every Monday, detects drift, and opens a PR if `agent-context.json` needs updating.
+
+Copy `.github/workflows/context-refresh.yml` into your repo:
+
+```yaml
+name: Context Refresh — Weekly
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 09:00 UTC
+perms:
+  contents: write
+  pull-requests: write
+jobs:
+  refresh:
+    uses: vb-nattamai/legacy-to-agentic-ready/.github/workflows/context-refresh.yml@main
+    with:
+      schedule: 'weekly'
+    secrets: inherit
+```
+
+✅ Runs every Monday, detects drift in `agent-context.json`, opens a PR if updates needed
 
 **Manual refresh**
 ```bash
@@ -460,14 +710,39 @@ python scripts/run_transformer.py --target /path/to/your-repo --only context --f
 
 ## ✅ Verify your context
 
-After generating or updating, run the verifier to confirm an LLM can correctly read and understand the generated files:
+After generating or updating, run the LLM verifier to confirm context is correct:
+
 ```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
 python scripts/run_transformer.py --target /path/to/your-repo --verify
 ```
 
-Exit code 0 = context is readable and consistent.
-Exit code 1 = context has gaps — check the output table for which fields failed.
-Use this as a CI gate after any transformation.
+**Output:**
+```
+──────────────────────────────────────
+  VERIFICATION RESULTS
+──────────────────────────────────────
+  entry_point:     ✅ PASS (src/main.py exists, imports correctly)
+  test_command:    ✅ PASS (pytest runs successfully)
+  primary_language: ✅ PASS (Python codebase confirmed)
+  ─────────────────────────────────────
+  Overall:         ✅ VALID — All critical fields verified
+──────────────────────────────────────
+```
+
+**Exit codes:**
+- `0` = context is valid and an LLM can use it safely
+- `1` = context has gaps or inconsistencies
+
+**Use as a CI gate:**
+```yaml
+- name: Verify agentic context
+  run: |
+    python scripts/run_transformer.py --target . --verify
+    # Fails if verification fails; blocks merge
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
 
 ---
 
@@ -483,6 +758,120 @@ The transformer auto-detects:
 - **C# / .NET** (ASP.NET, console apps)
 - **Ruby** (Rails, gems)
 - And more via generic fallback templates
+
+---
+
+## 🎯 Recent Improvements (v1.1.0)
+
+This release includes 7 major enhancements:
+
+### 1️⃣ **Security** — Collaborator Authentication
+Prevent unauthorized transformations via GitHub Actions:
+```yaml
+- name: Check actor is a repo collaborator
+  uses: github-script@v6
+  with:
+    script: |
+      const collaborators = await github.rest.repos.listCollaborators({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+      });
+      if (!collaborators.data.some(c => c.login === context.actor)) {
+        throw new Error('Only collaborators can trigger this workflow');
+      }
+```
+
+### 2️⃣ **Freshness** — Pre-commit Hooks
+Never let `agent-context.json` go stale:
+```bash
+python scripts/run_transformer.py --target /path/to/repo --install-hooks
+```
+Automatically refreshes the **dynamic section** on every commit (module_layout, domain_concepts, agent_capabilities). The **static section** (your manual edits) is never touched.
+
+### 3️⃣ **Freshness** — Weekly CI Refresh
+Scheduled workflow that detects drift and opens PRs:
+```yaml
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Monday 09:00 UTC
+```
+See `.github/workflows/context-refresh.yml` for full details.
+
+### 4️⃣ **Quality** — LLM Verification
+Validate that generated context is actually usable by an LLM:
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+python scripts/run_transformer.py --target /path/to/repo --verify
+```
+Checks that:
+- ✅ `entry_point` file actually exists on disk
+- ✅ `test_command` is executable
+- ✅ `primary_language` matches the actual codebase
+
+Exit code 0 means context is valid. Use as a CI gate.
+
+### 5️⃣ **Structure** — Static/Dynamic JSON Split
+`agent-context.json` now has two sections:
+
+**Static section** (set once, manually editable, never overwritten)
+```json
+{
+  "static": {
+    "repo_name": "...",
+    "primary_language": "...",
+    "frameworks": [...],
+    "entry_point": "...",
+    "restricted_write_paths": [...]
+  }
+}
+```
+
+**Dynamic section** (auto-refreshed on every scan)
+```json
+{
+  "dynamic": {
+    "last_scanned": "...",
+    "module_layout": {...},
+    "domain_concepts": [...],
+    "agent_capabilities": [...]
+  }
+}
+```
+
+This preserves your manual edits while keeping context fresh.
+
+### 6️⃣ **Scoring** — 100-Point Readiness System
+Every transformation outputs a score:
+
+```
+──────────────────────────────────────
+  AGENTIC READINESS SCORE: 95 / 100
+──────────────────────────────────────
+  ✅ agent-context.json exists        +10
+  ✅ CLAUDE.md exists                 +10
+  ✅ AGENTS.md exists                 +10
+  ✅ agents/system_prompt.md exists   +5
+  ✅ tools/ has files                 +10
+  ✅ Entry point exists               +10
+  ✅ Test command set                 +10
+  ✅ restricted_write_paths set       +10
+  ✅ environment_variables set        +10
+  ✅ domain_concepts populated        +5
+  ⚠️ OpenAPI spec missing             +0
+  ✅ CI config exists                 +5
+  ──────────────────────────────────
+  💡 To improve your score:
+     - Add OpenAPI/Swagger spec for API documentation
+```
+
+Drives adoption — teams want high scores!
+
+### 7️⃣ **Documentation** — Updated README
+- "Keeping context fresh" section (3 strategies)
+- "Verify your context" section with CI gate examples
+- "CLI Reference" quick lookup table
+- Agent definition for the transformer itself
+- Agentic readiness scoring explained
 
 ---
 
