@@ -110,7 +110,6 @@ jobs:
           cd agent-ready
           # Install with [ai] extra so anthropic is always available for --llm mode
           python -m pip install ".[ai]" -q
-          cd ..
 
       - name: Configure git for target repo
         run: |
