@@ -133,6 +133,7 @@ jobs:
           fi
 
       - name: Create Pull Request
+        if: steps.transform.outputs.generated == 'true'
         id: pr
         run: |
           BRANCH_NAME="${{ env.BRANCH_NAME }}"
