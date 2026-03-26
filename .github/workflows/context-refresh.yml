@@ -41,6 +41,14 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Upgrade packaging toolchain
+        run: |
+          python -m pip install --upgrade pip setuptools wheel build
+
+      - name: Install agentic toolkit
+        run: |
+          python -m pip install ./.agentic-toolkit
+
       - name: Run context-only refresh
         run: |
           python .agentic-toolkit/scripts/run_transformer.py \
