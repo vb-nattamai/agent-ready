@@ -40,7 +40,14 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 # src/agent_ready/ -> src/ -> repo root
 TOOLKIT_ROOT = SCRIPT_DIR.parent.parent
-TEMPLATES_DIR = TOOLKIT_ROOT / "templates"
+
+# Templates can live in two places:
+#   1. Inside the installed package: src/agent_ready/templates/
+#   2. In the repo checkout:         <repo_root>/templates/
+# Prefer the package-bundled copy so pip-installed runs always work.
+_PKG_TEMPLATES = SCRIPT_DIR / "templates"
+_REPO_TEMPLATES = TOOLKIT_ROOT / "templates"
+TEMPLATES_DIR = _PKG_TEMPLATES if _PKG_TEMPLATES.is_dir() else _REPO_TEMPLATES
 
 # Constants for language and framework detection
 LANGUAGE_EXTENSIONS: dict[str, list[str]] = {
@@ -393,15 +400,18 @@ class AgenticGenerator:
     def _write_file(self, rel_path: str, content: str) -> str:
         """Write file, return status."""
         full_path = self.target / rel_path
-        if full_path.exists() and not self.force:
+        already_exists = full_path.exists()
+        if already_exists and not self.force:
             status = "⏭️  Skipped"
+            self.generated.append((rel_path, status))
+            print(f"  ⏭️  {rel_path} (already exists, use --force to overwrite)")
         else:
             if self.dry_run:
                 status = "📝 (dry-run)"
             else:
                 full_path.parent.mkdir(parents=True, exist_ok=True)
                 full_path.write_text(content, encoding="utf-8")
-                status = "✅ Created" if not full_path.exists() or self.force else "🔄 Updated"
+                status = "🔄 Updated" if already_exists else "✅ Created"
             self.generated.append((rel_path, status))
             print(f"  {status[0:2]} {rel_path}")
         return status
