@@ -107,9 +107,7 @@ jobs:
       - name: Install agent-ready with AI dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel build
-          cd agent-ready
-          # Install with [ai] extra so anthropic is always available for --llm mode
-          python -m pip install ".[ai]" -q
+          pip install "$GITHUB_WORKSPACE/agent-ready[ai]" -q
 
       - name: Configure git for target repo
         run: |
