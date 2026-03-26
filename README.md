@@ -1,63 +1,6 @@
-# 🤖 AgentReady
-### `agent-ready`
+# legacy-to-agentic-ready
 
-**A toolkit you drop onto any existing repository to generate all scaffolding files that make it understandable and operable by AI agents — without hallucinations, without invented paths, without breaking existing code.**
-
-> **Supports:** Claude · OpenAI · Gemini · Any LLM
-
----
-
-## Why This Exists
-
-AI coding agents (Copilot, Claude Code, Cursor, Aider, etc.) work **dramatically better** when a repository contains structured context files that describe:
-
-- What the repo does and how it's organized
-- Where key files live and what they contain
-- What tools, APIs, and conventions are available
-- How to build, test, and deploy
-
-Without these files, agents hallucinate paths, invent APIs, and produce code that doesn't compile. **This toolkit fixes that.**
-
----
-
-## What It Generates
-
-When you run the transformer on your repository, it produces:
-
-| File | Purpose | Platform |
-|------|---------|----------|
-| `AGENTS.md` | Agent instruction file with safe/forbidden operations | GitHub Copilot / OpenAI |
-| `CLAUDE.md` | Agent instruction file with module layout & rules | Claude Code / Anthropic |
-| `system_prompt.md` | Universal system prompt (works with any LLM) | Any LLM |
-| `agent-context.json` | Machine-readable repo map (static + dynamic sections) | All platforms |
-| `mcp.json` | MCP server configuration | Claude / MCP-compatible |
-| `AGENTIC_READINESS.md` | Audit report with 100-point readiness score | Humans / CI gates |
-| `tools/<capability>_tool.*` | Tool scaffolds (Python, TS, Java, Go) | All platforms |
-| `memory/schema.md` | Memory/state contract for agent persistence | All platforms |
-| `.github/agents/<repo>.agent.md` | GitHub Copilot agent definition | VS Code Copilot |
-
----
-
-## Requirements
-
-- **Python 3.9+**
-- **pip** (or your preferred package manager)
-- **(Optional)** Anthropic, OpenAI, or Google API key for LLM-enhanced generation
-
-```bash
-# Required
-python --version  # Should be 3.9 or higher
-
-# Optional — install for LLM-enhanced generation
-pip install anthropic>=0.40.0
-
-# Set API keys (optional)
-export ANTHROPIC_API_KEY="sk-ant-..."   # For Claude
-export OPENAI_API_KEY="sk-..."          # For OpenAI
-export GOOGLE_API_KEY="..."             # For Gemini
-```
-
----
+This repo is superseded by https://github.com/vb-nattamai/agent-ready
 
 ## Quick Start
 
