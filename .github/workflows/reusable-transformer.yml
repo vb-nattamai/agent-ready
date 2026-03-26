@@ -64,12 +64,18 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+
+          # Ensure packaging toolchain is up-to-date for editable installs
+          python -m pip install --upgrade setuptools wheel build
+
           if [ -f .agentic-toolkit/requirements.txt ]; then
-            pip install -q anthropic || echo "⚠️  anthropic not available, using static mode"
+            python -m pip install -r .agentic-toolkit/requirements.txt || echo "⚠️  could not install optional requirements, continuing"
           fi
+
           # Install agent-ready in development mode so the shim can import it
           cd .agentic-toolkit
-          pip install -e . -q
+          python -m pip install --upgrade setuptools wheel
+          python -m pip install -e . -q
           cd ..
 
       - name: Configure git
