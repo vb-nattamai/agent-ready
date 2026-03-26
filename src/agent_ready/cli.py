@@ -153,10 +153,36 @@ class RepoAnalyzer:
                 if ext in exts:
                     self.languages[lang] = self.languages.get(lang, 0) + 1
                     break
-
         self.languages = dict(sorted(self.languages.items(), key=lambda x: x[1], reverse=True))
         if self.languages:
             print(f"  🌐 Languages: {', '.join(self.languages.keys())}")
+
+    def verify_languages_with_llm(self) -> None:
+        """Use LLM to verify detected languages against actual source files."""
+        try:
+            import openai
+        except ImportError:
+            print("[WARN] openai not installed, skipping LLM verification.")
+            return
+        file_list = [str(f) for f in self.files]
+        prompt = (
+            "Given this list of files in a repository, what programming languages are actually present? "
+            "Return a JSON array of language names.\n\nFiles:\n" + "\n".join(file_list)
+        )
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        llm_languages = []
+        try:
+            import json
+            llm_languages = json.loads(response.choices[0].message.content.strip())
+        except Exception:
+            print("[WARN] Could not parse LLM response for languages.")
+        print(f"[LLM] Languages detected by LLM: {llm_languages}")
+        print(f"[STATIC] Languages detected by extension: {list(self.languages.keys())}")
+        if set(llm_languages) != set(self.languages.keys()):
+            print("[WARN] LLM and static detection disagree! Please review.")
 
     def _detect_build_system(self) -> None:
         """Detect build system from config files."""
@@ -517,13 +543,14 @@ class AgenticGenerator:
             self._write_file("mcp.json", filled)
 
     def _generate_tool_templates(self) -> None:
-        """Generate tool templates for detected languages."""
+        """Generate tool templates for detected languages only."""
         lang_to_template = {
             "Python": "tool.python.template.py",
             "TypeScript": "tool.typescript.template.ts",
             "JavaScript": "tool.typescript.template.ts",
             "Java": "tool.java.template.java",
             "Go": "tool.go.template.go",
+            "Kotlin": None,  # No template yet
         }
         lang_to_output = {
             "Python": "tools/example_tool.py",
@@ -531,8 +558,8 @@ class AgenticGenerator:
             "JavaScript": "tools/example_tool.ts",
             "Java": "tools/ExampleTool.java",
             "Go": "tools/example_tool.go",
+            "Kotlin": None,  # No template yet
         }
-
         generated = set()
         for lang in self.meta.get("primary_languages", []):
             template_file = lang_to_template.get(lang)
