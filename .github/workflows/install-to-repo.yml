@@ -68,16 +68,24 @@ jobs:
             fi
           fi
 
-      - name: Create AgentReady issue to trigger transformation
+      - name: Create or reuse AgentReady issue to trigger transformation
         env:
           GH_TOKEN: ${{ secrets.INSTALL_TOKEN || github.token }}
           TARGET_REPO: ${{ inputs.target_repo }}
         run: |
-          gh issue create \
-            --repo "$TARGET_REPO" \
-            --title "[agentic-ready] Transform this repository" \
-            --body "Automatically triggered by AgentReady installer. This will analyze the repository and generate AI-agent-ready context files." \
-            --label "agentic-ready"
+          # Prefer reusing an existing open issue labeled 'agentic-ready' to avoid duplicates
+          EXISTING=$(gh issue list --repo "$TARGET_REPO" --label agentic-ready --state open --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            echo "Found existing agentic-ready issue #$EXISTING — adding a comment instead of creating a new issue."
+            gh issue comment --repo "$TARGET_REPO" "$EXISTING" --body "Installer run detected — reusing this issue to trigger the AgentReady transform."
+          else
+            echo "No existing agentic-ready issue found — creating a new one."
+            gh issue create \
+              --repo "$TARGET_REPO" \
+              --title "[agentic-ready] Transform this repository" \
+              --body "Automatically triggered by AgentReady installer. This will analyze the repository and generate AI-agent-ready context files." \
+              --label "agentic-ready"
+          fi
 
       - name: Report result
         env:
