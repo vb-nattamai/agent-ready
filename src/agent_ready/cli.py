@@ -396,7 +396,7 @@ class AgenticGenerator:
         self.generated: list[tuple[str, str]] = []  # (file, status)
 
     def generate_all(self) -> list[tuple[str, str]]:
-        """Generate all files."""
+        """Generate all files, then print readiness score."""
         self._generate_context_json()
         self._generate_agents_md()
         self._generate_claude_md()
@@ -406,6 +406,13 @@ class AgenticGenerator:
         self._generate_openai_agent()
         self._generate_gemini_agent()
         self._generate_memory_schema()
+        # Print readiness score after all files are generated
+        try:
+            from pathlib import Path
+            readiness = score(Path(self.target))
+            print(f"AGENTIC READINESS SCORE: {readiness['score']} / {readiness['max']}")
+        except Exception as e:
+            print(f"[WARN] Could not calculate readiness score: {e}")
         return self.generated
     def _generate_openai_agent(self) -> None:
         """Generate OpenAI agent entry point."""
@@ -542,12 +549,14 @@ class AgenticGenerator:
             self._write_file("CLAUDE.md", filled)
 
     def _generate_system_prompt(self) -> None:
-        """Generate system_prompt.md."""
+        """Generate system_prompt.md, always, and warn if template missing."""
         template_path = TEMPLATES_DIR / "system_prompt.template.md"
         if template_path.exists():
             content = template_path.read_text(encoding="utf-8")
             filled = self._fill_template(content)
             self._write_file("system_prompt.md", filled)
+        else:
+            print("[WARN] system_prompt.template.md not found in templates. system_prompt.md not generated.")
 
     def _generate_mcp_json(self) -> None:
         """Generate mcp.json."""
