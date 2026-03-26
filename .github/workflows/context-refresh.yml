@@ -5,13 +5,20 @@ name: Refresh agent context
 # HOW IT GETS THERE:
 #   - In agent-ready itself: triggered on schedule to keep agent-ready's own
 #     agent-context.json fresh.
-#   - In TARGET repos: installed by install-to-repo.yml (copies
-#     templates/context-refresh-workflow.yml) so each repo gets weekly
-#     drift detection after the initial transformation.
+name: "AgentReady: Weekly Context Refresh"
+# ──────────────────────────────────────────────
+# Keeps agent-context.json up to date in this repo.
 #
-# It is also callable as a reusable workflow (workflow_call) so target repos
-# can invoke the latest version of this logic without copying the full script.
-# ─────────────────────────────────────────────────────────────────────────────
+# USAGE:
+#   - In agent-ready: runs weekly & on demand
+#   - In target repos: installed by installer, runs weekly
+#   - Can be called via workflow_call for up-to-date context
+#
+# WHAT IT DOES:
+#   1. Runs transformer in context-only mode
+#   2. If agent-context.json changed, opens a PR
+#   3. If no drift, prints success
+# ──────────────────────────────────────────────
 
 on:
   schedule:
