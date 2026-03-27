@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -256,12 +257,25 @@ def analyse(
 
     prompt = "\n\n".join(parts)
 
-    response = client.messages.create(
-        model=ANALYSIS_MODEL,
-        max_tokens=4096,
-        system=ANALYSIS_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    last_error = None
+    for attempt in range(3):
+        try:
+            response = client.messages.create(
+                model=ANALYSIS_MODEL,
+                max_tokens=4096,
+                system=ANALYSIS_SYSTEM,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            break
+        except anthropic.OverloadedError as e:
+            last_error = e
+            if attempt < 2:
+                wait = 30 * (attempt + 1)
+                if not quiet:
+                    print(f"  ⚠️  API overloaded, retrying in {wait}s... (attempt {attempt + 1}/3)")
+                time.sleep(wait)
+            else:
+                raise last_error
 
     raw = response.content[0].text.strip()
 
