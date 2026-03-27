@@ -132,6 +132,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          PYTHONPATH: ${{ github.workspace }}/agent-ready/src
         run: |
           CMD="python $GITHUB_WORKSPACE/agent-ready/src/agent_ready/cli.py --target ./target-repo"
           [ -n "${{ inputs.only }}" ]        && CMD="$CMD --only ${{ inputs.only }}"
