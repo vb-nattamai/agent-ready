@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import os
+import random
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -40,18 +42,34 @@ def _call(
     prompt: str,
     max_tokens: int = 3000,
 ) -> str:
-    """Single Sonnet generation call."""
-    response = client.messages.create(
-        model=GENERATION_MODEL,
-        max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text.strip()
+    """
+    Single Sonnet generation call with retry logic for 529 overloaded errors.
+    Retries up to 5 times with increasing wait times + jitter before giving up.
+    """
+    last_error = None
+    for attempt in range(5):
+        try:
+            response = client.messages.create(
+                model=GENERATION_MODEL,
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.content[0].text.strip()
+        except anthropic.APIStatusError as e:
+            if e.status_code != 529:
+                raise
+            last_error = e
+            if attempt < 4:
+                wait = (60 * (attempt + 1)) + random.uniform(0, 10)
+                print(f"  ⚠️  API overloaded, retrying in {int(wait)}s... (attempt {attempt + 1}/5)")
+                time.sleep(wait)
+            else:
+                raise last_error
+    raise last_error  # unreachable but satisfies type checker
 
 
 def _analysis_block(analysis: dict[str, Any]) -> str:
     """Compact JSON representation of the analysis for prompt injection."""
-    # Trim source-heavy fields that aren't needed in generation prompts
     slim = {k: v for k, v in analysis.items()}
     return json.dumps(slim, indent=2)
 
@@ -357,7 +375,6 @@ class LLMGenerator:
     # ── Individual file generators ────────────────────────────────────────────
 
     def _agent_context(self) -> None:
-        # Preserve existing static section if present
         existing_static: dict[str, Any] | None = None
         ctx_path = self.target / "agent-context.json"
         if ctx_path.exists():
