@@ -3,5 +3,5 @@
 https://github.com/vb-nattamai/agent-ready
 """
 
-__version__ = "2.1.1"
+__version__ = "2.1.2"
 __all__ = ["__version__"]
