@@ -70,8 +70,18 @@ def _call(
 
 def _analysis_block(analysis: dict[str, Any]) -> str:
     """Compact JSON representation of the analysis for prompt injection."""
-    slim = {k: v for k, v in analysis.items()}
-    return json.dumps(slim, indent=2)
+    return json.dumps(analysis, indent=2)
+
+
+def _pitfalls_block(analysis: dict[str, Any]) -> str:
+    """
+    Format potential_pitfalls as a numbered list for clear prompt injection.
+    Ensures pitfalls are never omitted or summarised by the LLM.
+    """
+    pitfalls = analysis.get("potential_pitfalls", [])
+    if not pitfalls:
+        return "No pitfalls detected."
+    return "\n".join(f"{i+1}. {p}" for i, p in enumerate(pitfalls))
 
 
 # ── agent-context.json ────────────────────────────────────────────────────────
@@ -167,7 +177,18 @@ class names, commands, and patterns found in this codebase. No generic advice.
    Each entry from key_components: name, path, and responsibility.
 
 7. ## Potential Pitfalls
-   Every item from potential_pitfalls, phrased as a warning.
+   THIS SECTION IS CRITICAL. An agent that misses these will break the codebase.
+   Write every single item below as a specific, actionable warning.
+   Do NOT summarise, generalise, or skip any item.
+   Do NOT add generic advice — only what is listed here.
+
+   Here are ALL the pitfalls found in this codebase, numbered for reference:
+{_pitfalls_block(analysis)}
+
+   For each pitfall above, write a ## warning with:
+   - What the agent will try to do (the mistake)
+   - Why it breaks things in THIS specific codebase
+   - What to do instead
 
 Write as if a senior engineer on this team authored it specifically for
 an AI agent joining the project today.\
@@ -216,7 +237,15 @@ found in this codebase. No generic software engineering advice.
    The key domain concepts explained so Claude understands the
    business logic, not just the syntax.
 
-6. ## After Every Change
+6. ## Known Pitfalls — Read These Before Writing Any Code
+   THIS SECTION IS CRITICAL. Copy every pitfall below VERBATIM into this section.
+   Each one has been found by analysing the actual codebase.
+   Do NOT add generic advice. Do NOT skip any item.
+
+   Pitfalls found in this codebase:
+{_pitfalls_block(analysis)}
+
+7. ## After Every Change
    A specific checklist Claude must complete after modifying this codebase.
    Include the test command and any lint/format steps found in the analysis.\
 """)
@@ -246,6 +275,8 @@ Write a complete, production-ready system prompt. Write in second person
 - Domain concepts the LLM needs to reason about the business logic
 - Coding conventions: naming, structure, patterns (from naming_convention, structure_type)
 - Brief description of key components and their responsibilities
+- Known pitfalls — include every item from this list verbatim:
+{_pitfalls_block(analysis)}
 
 Length: comprehensive enough to be useful, concise enough to fit a context window.
 Target ~400–600 words.\
@@ -301,6 +332,7 @@ def generate_mcp_json(analysis: dict[str, Any]) -> str:
         "go": "go",
         "rust": "cargo",
         "ruby": "ruby",
+        "kotlin": "java",
     }
     runtime = runtime_map.get(lang, "python")
 
