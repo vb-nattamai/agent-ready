@@ -324,7 +324,7 @@ def run_eval(
       2. Ask each question without context (baseline)
       3. Ask each question with context (CLAUDE.md + AGENTS.md + agent-context.json)
       4. Judge both responses
-      5. Calculate improvement delta
+      5. Calculate score delta
       6. Return full results
     """
     if not quiet:
@@ -384,7 +384,7 @@ def run_eval(
 
         baseline_score = baseline_judgment.get("score", 0)
         context_score = context_judgment.get("score", 0)
-        improvement = context_score - baseline_score
+        delta = context_score - baseline_score
 
         baseline_total += baseline_score
         context_total += context_score
@@ -408,21 +408,21 @@ def run_eval(
                 "hallucinated": context_judgment.get("hallucinated", False),
                 "reasoning": context_judgment.get("reasoning", ""),
             },
-            "improvement": improvement,
+            "delta": delta,
             "passed": context_judgment.get("correct", False),
         }
         results.append(result)
 
         if not quiet:
-            delta_str = f"+{improvement}" if improvement >= 0 else str(improvement)
+            delta_str = f"+{delta}" if delta >= 0 else str(delta)
             status = "✅" if result["passed"] else "⬜"
             print(f"     {status} baseline: {baseline_score}/10 → with context: {context_score}/10 ({delta_str})")
 
     n = len(results)
-    baseline_avg = baseline_total / n if n else 0
-    context_avg = context_total / n if n else 0
-    improvement_pct = ((context_avg - baseline_avg) / max(baseline_avg, 1)) * 100
-    pass_rate = sum(1 for r in results if r["passed"]) / n if n else 0
+    baseline_avg = round(baseline_total / n, 1) if n else 0
+    context_avg = round(context_total / n, 1) if n else 0
+    score_delta = round(context_avg - baseline_avg, 1)
+    pass_rate = round(sum(1 for r in results if r["passed"]) / n, 2) if n else 0
 
     # Category breakdown
     category_scores: dict[str, dict[str, float]] = {}
@@ -437,24 +437,21 @@ def run_eval(
     category_summary = {}
     for cat, scores in category_scores.items():
         count = scores["count"]
+        b_avg = round(scores["baseline"] / count, 1)
+        c_avg = round(scores["context"] / count, 1)
         category_summary[cat] = {
-            "baseline_avg": round(scores["baseline"] / count, 1),
-            "context_avg": round(scores["context"] / count, 1),
-            "improvement": round(
-                ((scores["context"] / count) - (scores["baseline"] / count))
-                / max(scores["baseline"] / count, 1)
-                * 100,
-                1,
-            ),
+            "baseline_avg": b_avg,
+            "context_avg": c_avg,
+            "delta": round(c_avg - b_avg, 1),
         }
 
     eval_result = {
         "questions": questions,
         "results": results,
-        "baseline_score": round(baseline_avg, 1),
-        "context_score": round(context_avg, 1),
-        "improvement_pct": round(improvement_pct, 1),
-        "pass_rate": round(pass_rate, 2),
+        "baseline_score": baseline_avg,
+        "context_score": context_avg,
+        "score_delta": score_delta,
+        "pass_rate": pass_rate,
         "passed": pass_rate >= fail_level if fail_level > 0 else True,
         "category_breakdown": category_summary,
         "hallucination_rate": round(
@@ -478,21 +475,21 @@ def _print_summary(result: dict[str, Any]) -> None:
     print("──────────────────────────────────────────────")
     print(f"  Baseline score (no context):     {result['baseline_score']}/10")
     print(f"  With context score:              {result['context_score']}/10")
-    improvement = result["improvement_pct"]
-    sign = "+" if improvement >= 0 else ""
-    print(f"  Improvement:                     {sign}{improvement}%")
+    delta = result["score_delta"]
+    sign = "+" if delta >= 0 else ""
+    print(f"  Score delta:                     {sign}{delta} points")
     print(f"  Pass rate:                       {int(result['pass_rate'] * 100)}%")
     print(f"  Hallucination rate (w/ context): {int(result['hallucination_rate'] * 100)}%")
     print()
     print("  Category breakdown:")
     for cat, scores in result["category_breakdown"].items():
-        sign = "+" if scores["improvement"] >= 0 else ""
-        print(f"    {cat:<14} {scores['baseline_avg']:>4}/10 → {scores['context_avg']:>4}/10  ({sign}{scores['improvement']}%)")
+        sign = "+" if scores["delta"] >= 0 else ""
+        print(f"    {cat:<14} {scores['baseline_avg']:>4}/10 → {scores['context_avg']:>4}/10  ({sign}{scores['delta']} pts)")
     print("──────────────────────────────────────────────")
 
-    if result["improvement_pct"] >= 30:
+    if result["score_delta"] >= 5:
         print("  ✅ Context files significantly improve AI responses")
-    elif result["improvement_pct"] >= 10:
+    elif result["score_delta"] >= 2:
         print("  ⚠️  Context files moderately improve AI responses")
     else:
         print("  ❌ Context files have minimal impact — review content quality")
@@ -507,6 +504,9 @@ def save_eval_report(
     result: dict[str, Any],
 ) -> Path:
     """Save full eval results to AGENTIC_EVAL.md in the target repo."""
+    delta = result["score_delta"]
+    sign = "+" if delta >= 0 else ""
+
     lines = [
         "# AgentReady — Evaluation Report",
         "",
@@ -518,20 +518,20 @@ def save_eval_report(
         "|--------|-------|",
         f"| Baseline score (no context) | {result['baseline_score']}/10 |",
         f"| Score with context files | {result['context_score']}/10 |",
-        f"| Improvement | {'+' if result['improvement_pct'] >= 0 else ''}{result['improvement_pct']}% |",
+        f"| Score delta | {sign}{delta} points |",
         f"| Pass rate | {int(result['pass_rate'] * 100)}% |",
         f"| Hallucination rate | {int(result['hallucination_rate'] * 100)}% |",
         "",
         "## Category Breakdown",
         "",
-        "| Category | Baseline | With Context | Improvement |",
-        "|----------|----------|--------------|-------------|",
+        "| Category | Baseline | With Context | Delta |",
+        "|----------|----------|--------------|-------|",
     ]
 
     for cat, scores in result["category_breakdown"].items():
-        sign = "+" if scores["improvement"] >= 0 else ""
+        sign = "+" if scores["delta"] >= 0 else ""
         lines.append(
-            f"| {cat} | {scores['baseline_avg']}/10 | {scores['context_avg']}/10 | {sign}{scores['improvement']}% |"
+            f"| {cat} | {scores['baseline_avg']}/10 | {scores['context_avg']}/10 | {sign}{scores['delta']} pts |"
         )
 
     lines += [
@@ -542,6 +542,7 @@ def save_eval_report(
 
     for r in result["results"]:
         status = "✅" if r["passed"] else "❌"
+        delta_str = f"+{r['delta']}" if r["delta"] >= 0 else str(r["delta"])
         lines += [
             f"### {status} {r['question_id']} — {r['category']}",
             "",
@@ -551,7 +552,7 @@ def save_eval_report(
             f"**Baseline** (score: {r['baseline']['score']}/10):",
             f"> {r['baseline']['response'][:300]}{'...' if len(r['baseline']['response']) > 300 else ''}",
             "",
-            f"**With context** (score: {r['with_context']['score']}/10):",
+            f"**With context** (score: {r['with_context']['score']}/10, delta: {delta_str}):",
             f"> {r['with_context']['response'][:300]}{'...' if len(r['with_context']['response']) > 300 else ''}",
             "",
             f"*Judge reasoning: {r['with_context']['reasoning']}*",

@@ -11,17 +11,17 @@ Transform any legacy repository into an AI-agent-ready codebase — with real co
 
 AI agents fail on unfamiliar codebases because they lack context — they invent file paths, guess commands, and miss domain concepts entirely. AgentReady fixes this by generating scaffolding files that give agents real, verified knowledge of your repository before they touch a single line of code.
 
-**Proven results across real codebases — from simple to complex:**
+**Proven results across three real codebases:**
 
-| Repo | Stack | Files | Baseline | With context | Improvement | Pass rate |
-|------|-------|-------|----------|--------------|-------------|-----------|
-| Simple bowling kata | Java, single class | 13 | 0.8 / 10 | 9.7 / 10 | **+888%** | 100% |
-| [travel-assist](https://github.com/vb-nattamai/travel-assist) | Kotlin, Spring Boot | 23 | 0.3 / 10 | 8.9 / 10 | **+855%** | 89% |
-| [bowling-kata](https://github.com/vb-nattamai/bowling-kata) | Java, Python, Go, TypeScript | 47 | 2.1 / 10 | 7.6 / 10 | **+257%** | 89% |
+| Repo | Stack | Files | Without context | With context | Pass rate |
+|------|-------|-------|----------------|--------------|-----------|
+| Simple bowling kata | Java, single class | 13 | 0.8 / 10 | 9.7 / 10 | 100% |
+| [travel-assist](https://github.com/vb-nattamai/travel-assist) | Kotlin, Spring Boot | 23 | 0.3 / 10 | 8.9 / 10 | 89% |
+| [bowling-kata](https://github.com/vb-nattamai/bowling-kata) | Java, Python, Go, TypeScript | 47 | 2.1 / 10 | 7.6 / 10 | 89% |
 
-*All benchmarks use AgentReady's built-in eval framework — Claude Haiku as evaluator and judge.*
+*Scores are averages across 9 repo-specific questions, judged by Claude Haiku. Without context, an AI agent is essentially guessing — it cannot know your file paths, commands, or domain logic.*
 
-The pattern is consistent: without context an AI agent is essentially guessing on repo-specific questions. With context it answers accurately, references real file paths, and respects the actual constraints of the codebase. The polyglot monorepo scores lower because Opus was reading previously generated scaffolding files as source code — a known issue being fixed in the next release.
+The polyglot monorepo scores lower because Opus was reading previously generated scaffolding files as source code — a known issue being fixed in the next release.
 
 ---
 
@@ -135,7 +135,7 @@ Issue opened
 | `system_prompt.md` | Universal system prompt for any LLM |
 | `mcp.json` | MCP server configuration |
 | `memory/schema.md` | Agent memory/state contract |
-| `AGENTIC_EVAL.md` | Evaluation report — improvement delta per category |
+| `AGENTIC_EVAL.md` | Evaluation report — score per category |
 
 > The `static` section of `agent-context.json` is safe to edit manually. The `dynamic` section is auto-refreshed on every scan.
 
@@ -158,7 +158,7 @@ agent-ready --target /path/to/repo --eval-only --fail-level 0.8
 
 **How it works:**
 
-Each question is asked twice — once with no context (baseline) and once with your generated files as the system prompt. A judge model scores both responses. The improvement delta is your eval score.
+Each question is asked twice — once with no context (baseline) and once with your generated files as the system prompt. A judge model scores both responses on a 0–10 scale. The delta between scores is your improvement.
 
 **9 questions across 5 categories:**
 - **Commands** — are the build/test/run commands correct?
@@ -271,15 +271,15 @@ Triggered manually from the Actions tab. Pushes trigger workflows into any targe
 
 ### `context-drift-detector.yml` — Weekly drift detection
 
-Runs every Monday at 09:00 UTC. Detects if `agent-context.json` has structurally drifted from the current codebase (ignoring `last_scanned` timestamp changes) and opens a PR if drift is found. Also installed into target repos by the installer.
+Runs every Monday at 09:00 UTC. Detects if `agent-context.json` has structurally drifted from the current codebase and opens a PR if drift is found. Also installed into target repos by the installer.
 
 ### `validate-token-permissions.yml` — Token validation
 
-Creates a test branch in a target repo, pushes it, and immediately deletes it. Use this to verify your `INSTALL_TOKEN` has the right permissions before triggering a real transformation — saves API calls during debugging.
+Creates a test branch in a target repo, pushes it, and immediately deletes it. Confirms `INSTALL_TOKEN` permissions before triggering a real transformation.
 
 ### `test-dry-run.yml` — Preview without writing
 
-Runs the transformer in read-only mode against any repo. Use before the real transformation to see what would be generated.
+Runs the transformer in read-only mode against any repo.
 
 ### `release.yml` — Semantic versioning
 
@@ -305,7 +305,7 @@ git -C /path/to/repo config agentic.toolkit-path /path/to/agent-ready
 
 Automatically refreshes the `dynamic` section of `agent-context.json` whenever source files change. The `static` section (your manual edits) is never touched.
 
-**Weekly CI drift detection** — installed automatically by the installer as `.github/workflows/context-drift-detector.yml`. Opens a PR when structural drift is detected.
+**Weekly CI drift detection** — installed automatically by the installer as `.github/workflows/context-drift-detector.yml`.
 
 **Manual refresh:**
 
