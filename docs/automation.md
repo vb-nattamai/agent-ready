@@ -1,344 +1,223 @@
-# Automation Guide: GitHub & Gitea Workflows
+# Automation Guide: GitHub Actions Workflows
 
-This guide shows how to integrate AgentReady (`agent-ready`) into your CI/CD pipelines and issue trackers using GitHub Actions and Gitea Actions.
+This guide explains how to integrate AgentReady into your repositories using GitHub Actions.
+
+---
 
 ## Quick Start
 
-### Option 1: Auto-trigger on Issues (Easiest)
+The fastest path is the one-click installer:
 
-Copy this file to your repo:
+1. Go to [agent-ready Actions → Install AgentReady to Target Repository](https://github.com/vb-nattamai/agent-ready/actions/workflows/install-to-target-repo.yml)
+2. Click **Run workflow**
+3. Enter your target repo (`owner/repo`), enable LLM and eval modes
+4. Done — the installer pushes the trigger workflow, opens an issue, and the transformation starts automatically
 
-**Filename:** `.github/workflows/agentic-ready.yml`
+---
+
+## How the Trigger Works
+
+The workflow installed in your repo listens for a single event:
+
+```yaml
+on:
+  issues:
+    types: [labeled]
+```
+
+**Why `labeled` only (not `opened`)?**
+
+Using `labeled` as the single trigger prevents duplicate runs. When the installer creates an issue and adds the label in one step, GitHub fires both `opened` and `labeled` — causing two simultaneous runs and two PRs. With `labeled` only:
+
+- **Automated path** — installer creates issue → adds label → fires once
+- **Manual retrigger** — add the `agentic-ready` label to any existing issue → fires once
+
+---
+
+## Installed Workflow (`agentic-ready.yml`)
+
+This file is pushed into your target repo by the installer:
 
 ```yaml
 name: Agentic Ready
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
+
 jobs:
+  check-permission:
+    if: contains(github.event.issue.labels.*.name, 'agentic-ready')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: read
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - name: Check actor is a repo collaborator
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.actor
+            });
+            const allowed = ['admin', 'write', 'maintain'];
+            core.setOutput('allowed', allowed.includes(perm.permission) ? 'true' : 'false');
+
   transform:
-    if: |
-      contains(github.event.issue.title, '[agentic-ready]') ||
-      contains(github.event.issue.labels.*.name, 'agentic-ready')
-    uses: vb-nattamai/agent-ready/.github/workflows/reusable-transformer.yml@main
-    secrets: inherit
-```
-
-**To trigger:**
-1. Open an issue in your repo with title `[agentic-ready] Transform this repo`
-2. OR add the `agentic-ready` label to any issue
-3. The workflow runs automatically, generates all files, and opens a PR
-
-### Option 2: Call from Your Existing Pipeline
-
-Add this step to any GitHub Actions workflow in your repo:
-
-```yaml
-- name: Make repo agentic-ready
-  uses: vb-nattamai/agent-ready/.github/workflows/reusable-transformer.yml@main
-  with:
-    target_branch: main
-    only: ''  # or 'agents', 'tools', 'context', 'memory'
-    force: false
-  secrets:
-    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-    GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-```
-
-**Run on schedule:**
-```yaml
-on:
-  schedule:
-    - cron: '0 0 * * 0'  # Weekly Monday at midnight
-```
-
-### Option 3: Run on Deploy (One-off Setup)
-
-```yaml
-# In your .github/workflows/deploy.yml
-- name: Setup agents on first deploy
-  if: github.event_name == 'deployment' && github.payload.deployment.environment == 'production'
-  uses: vb-nattamai/agent-ready/.github/workflows/reusable-transformer.yml@main
-  secrets: inherit
-```
-
----
-
-## Workflow Inputs & Outputs
-
-### `reusable-transformer.yml` Inputs
-
-| Input | Type | Default | Description |
-|-------|------|---------|-------------|
-| `target_branch` | string | `main` | PR base branch |
-| `only` | string | `` | Limit files: `agents`, `tools`, `context`, `memory`, or empty for all |
-| `force` | boolean | `false` | Overwrite existing files |
-
-### Environment Variables (Optional)
-
-Set these as GitHub Secrets for LLM-enhanced features:
-
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-GOOGLE_API_KEY=...
-```
-
-If not set, the transformer uses **static analysis only** (no external API calls).
-
----
-
-## What Gets Generated
-
-The workflow creates these files in your repo:
-
-```
-your-repo/
-├── CLAUDE.md                  # Claude Code context
-├── AGENTS.md                  # Agent contract
-├── agent-context.json         # Machine-readable repo map
-├── agents/
-│   ├── system_prompt.md       # Universal system prompt
-│   ├── openai_agent.py        # OpenAI Agents SDK entry
-│   ├── gemini_agent.yaml      # Google ADK config
-│   └── gemini_agent.py        # Google ADK Python
-├── mcp.json                   # MCP server config
-├── memory/
-│   └── schema.md              # Memory schema
-├── tools/                     # Language-specific tool scaffolds
-│   ├── python_tools.py
-│   ├── typescript_tools.ts
-│   └── ...
-└── AGENTIC_READINESS.md      # Audit & next steps
-```
-
----
-
-## GitHub Issue Trigger Workflow
-
-### Sequence Diagram
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ User opens issue: [agentic-ready] Transform this repo       │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           ▼
-         ┌─────────────────────────────────────┐
-         │ GitHub Actions: issue-trigger.yml   │
-         │ (triggered on issue open/labeled)   │
-         └──────────────┬──────────────────────┘
-                        │
-        ┌───────────────┴───────────────┐
-        │                               │
-        ▼                               ▼
-  Checkout repo                  Checkout toolkit
-  (.agentic-toolkit/)            from GitHub
-        │                               │
-        └───────────────┬───────────────┘
-                        │
-                        ▼
-              Set up Python 3.11
-              Install dependencies
-                        │
-                        ▼
-    run_transformer.py --target .
-    ├─ Detect language, framework
-    ├─ Detect build system
-    ├─ Generate context files
-    └─ Create tool scaffolds
-                        │
-                        ▼
-         ┌──────────────────────────┐
-         │ Files generated? (git diff)
-         └──┬─────────────────────┬──┘
-            │ YES                 │ NO
-            ▼                     ▼
-      Create branch         Exit 0
-      agentic-ready/init    "Already up to date"
-      Commit + push
-            │
-            ▼
-    Create Pull Request
-    ├─ Title: 🤖 Add agentic-ready scaffolding
-    ├─ Body: from PR_TEMPLATE.md
-    ├─ Label: agentic-ready
-    └─ Link stored
-            │
-            ▼
-    Comment on issue:
-    ├─ Link to PR
-    ├─ List of generated files
-    └─ Instructions to review
-            │
-            ▼
-    Add labels:
-    ├─ agentic-ready-complete (success)
-    └─ agentic-ready-failed (if error)
-```
-
----
-
-## Manual Installation to Another Repo
-
-Use the **`install-to-repo.yml`** workflow to add agentic-ready to any other GitHub repo.
-
-### Steps:
-
-1. Go to your AgentReady (`agent-ready`) repo
-2. Click **Actions** → **Install Agentic Ready to Repo**
-3. Click **Run workflow**
-4. Fill in:
-   - **target_repo:** `myorg/my-app`
-   - **target_branch:** `main`
-5. Click **Run workflow**
-
-This creates `.github/workflows/agentic-ready.yml` in the target repo automatically.
-
-**Required secret:** `INSTALL_TOKEN` — a GitHub PAT with `repo` and `workflow` scopes.
-
----
-
-## Gitea Integration (Self-Hosted)
-
-Gitea Actions uses the same YAML syntax as GitHub Actions but with Gitea-specific actions and APIs.
-
-### Gitea Issue Trigger (Same as GitHub)
-
-**Filename:** `.gitea/workflows/agentic-ready.yml` in your Gitea instance
-
-```yaml
-name: Agentic Ready (Gitea)
-on:
-  issues:
-    types: [opened, labeled]
-jobs:
-  transform:
-    if: |
-      contains(github.event.issue.title, '[agentic-ready]') ||
-      contains(github.event.issue.labels.*.name, 'agentic-ready')
-    uses: your-gitea-instance.com/vb-nattamai/agent-ready/.gitea/workflows/reusable-transformer.yml@main
-    secrets: inherit
-```
-
-### Gitea Pipeline Trigger
-
-```yaml
-# In your .gitea/workflows/deploy.yml
-- name: Make repo agentic-ready
-  uses: your-gitea-instance.com/vb-nattamai/agent-ready/.gitea/workflows/reusable-transformer.yml@main
-  with:
-    target_branch: main
-  secrets:
-    GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-```
-
-#### Gitea Specifics:
-
-- Actions live in `.gitea/workflows/` instead of `.github/workflows/`
-- Use `gitea.com/actions/checkout` instead of `actions/checkout`
-- PR creation uses Gitea REST API (not `gh` CLI)
-- Issue comments use Gitea API with `curl`
-- Secret: `GITEA_TOKEN` — personal access token with `api` scope
-
----
-
-## Configuration Examples
-
-### Weekly Refresh (Any Repo)
-
-Add to your repo:
-
-```yaml
-# .github/workflows/weekly-agentic-update.yml
-name: Weekly Agentic Update
-on:
-  schedule:
-    - cron: '0 0 * * 0'  # Sundays at midnight UTC
-jobs:
-  update:
+    needs: check-permission
+    if: needs.check-permission.outputs.allowed == 'true'
     uses: vb-nattamai/agent-ready/.github/workflows/reusable-transformer.yml@main
     with:
-      target_branch: main
+      target_repo: ${{ github.repository }}
+      target_branch: ${{ github.event.repository.default_branch }}
+      issue_number: ${{ github.event.issue.number }}
+      llm: true          # Claude Opus analyses code, Sonnet writes files
+      eval: true         # Claude Haiku measures whether context files actually help
+      fail_level: '0.0'  # set e.g. '0.8' to gate on eval pass rate
       force: false
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      only: ''
+    secrets: inherit
 ```
 
-### Partial Generation (Tools Only)
+---
+
+## What Happens When It Runs
+
+```
+Label added to issue
+    │
+    ├─ 1. Checks actor has write access to the repo
+    ├─ 2. Calls reusable-transformer.yml in agent-ready
+    ├─ 3. Claude Opus analyses your codebase (~60s)
+    │      — reads source files, config, CI, README
+    │      — extracts domain concepts, entry points, env vars, pitfalls
+    ├─ 4. Claude Sonnet writes all scaffolding files from scratch
+    │      — AGENTS.md, CLAUDE.md, agent-context.json
+    │      — system_prompt.md, mcp.json, memory/schema.md
+    ├─ 5. Claude Haiku evaluates whether context files improve AI responses
+    │      — 9 questions, with and without context
+    │      — saves AGENTIC_EVAL.md with per-question results
+    ├─ 6. Opens a PR: "🤖 Add agentic-ready scaffolding"
+    ├─ 7. Comments on the issue with the PR link
+    └─ 8. Closes the issue ✅
+```
+
+---
+
+## Generated Files
+
+| File | Purpose |
+|------|---------|
+| `agent-context.json` | Machine-readable repo map — static section (edit once) + dynamic section (auto-refreshed) |
+| `AGENTS.md` | Operating contract for GitHub Copilot and OpenAI agents |
+| `CLAUDE.md` | Auto-loaded by Claude Code at every session start |
+| `system_prompt.md` | Paste as the `system` parameter in any LLM interface |
+| `mcp.json` | MCP server configuration |
+| `memory/schema.md` | Agent working memory schema |
+| `AGENTIC_EVAL.md` | Eval report — baseline vs with-context scores per category |
+
+---
+
+## Model Strategy
+
+| Phase | Model | Why |
+|-------|-------|-----|
+| Analysis | Claude Opus | Deepest reasoning over complex code |
+| Generation | Claude Sonnet | Best structured writing quality |
+| Evaluation | Claude Haiku | 36 API calls — speed and cost matter |
+
+---
+
+## Manual Retrigger
+
+To retrigger a transformation on any repo that already has the workflow installed:
+
+1. Go to your repo → Issues → New Issue
+2. Give it any title
+3. Add the `agentic-ready` label
+4. The workflow fires automatically
+
+Or re-label an existing closed issue — same effect.
+
+---
+
+## Required Secrets
+
+Add these to your target repo under Settings → Secrets and variables → Actions:
+
+| Secret | Required for | Description |
+|--------|-------------|-------------|
+| `ANTHROPIC_API_KEY` | LLM mode | Claude Opus + Sonnet + Haiku |
+| `INSTALL_TOKEN` | Push access | PAT with `repo` + `workflow` scopes |
+
+---
+
+## Context Drift Detection
+
+The installer also pushes a weekly drift detector:
+
+```
+.github/workflows/context-drift-detector.yml
+```
+
+Runs every Monday at 09:00 UTC. Detects if `agent-context.json` has structurally drifted from the codebase (ignoring `last_scanned` timestamp changes) and opens a PR if drift is found.
+
+---
+
+## Manual Refresh
+
+To refresh context files at any time without opening an issue:
+
+```bash
+agent-ready --target /path/to/repo --only context --force
+```
+
+Or trigger via the Actions tab in `agent-ready`:
+
+```
+agent-ready → Actions → Agentic Ready Transformer → Run workflow
+```
+
+With inputs:
+- `target_repo`: `owner/repo`
+- `only`: `context`
+- `force`: ✅
+
+---
+
+## Eval as a CI Gate
+
+To fail a PR if context quality drops below a threshold, set `fail_level` in your `agentic-ready.yml`:
 
 ```yaml
-- name: Generate tools only
-  uses: vb-nattamai/agent-ready/.github/workflows/reusable-transformer.yml@main
-  with:
-    only: tools
-  secrets: inherit
+      fail_level: '0.8'  # fail if fewer than 80% of eval questions pass
 ```
 
-### Force Overwrite
+This exits with code 1 if the pass rate is below the threshold, blocking the PR from being created.
+
+---
+
+## Gitea
+
+Replace `.github/` with `.gitea/` — identical YAML syntax. The reusable workflow reference becomes:
 
 ```yaml
-- name: Regenerate all files
-  uses: vb-nattamai/agent-ready/.github/workflows/reusable-transformer.yml@main
-  with:
-    force: true
-  secrets: inherit
+uses: your-gitea.com/vb-nattamai/agent-ready/.gitea/workflows/reusable-transformer.yml@main
 ```
+
+PR creation uses the Gitea REST API via `curl` instead of the `gh` CLI.
 
 ---
 
 ## Troubleshooting
 
-### PR Already Exists
+**Two PRs are created** — your `agentic-ready.yml` uses both `opened` and `labeled` triggers. Change to `labeled` only.
 
-If you run the workflow twice, it creates `agentic-ready/update` branch on the second run to avoid conflicts.
+**Workflow not triggering** — confirm the `agentic-ready` label exists in the repo and Actions are enabled under Settings → Actions.
 
-### LLM Features Not Available
+**403 on push** — `INSTALL_TOKEN` has expired or lacks `repo` + `workflow` scopes. Use the validate-token-permissions workflow in `agent-ready` to test before re-running.
 
-If `ANTHROPIC_API_KEY` (or equivalent) is not set, the transformer automatically falls back to **static analysis mode** — no errors, just fewer details in generated prompts.
-
-### Workflow Not Triggering in Target Repo
-
-- Ensure `.github/workflows/agentic-ready.yml` exists in the target repo
-- Check that the issue title contains `[agentic-ready]` exactly
-- Verify the `agentic-ready` label exists in the target repo
-- Check Actions are enabled: **Settings** → **Actions** → **Allow all actions**
-
-### Gitea Token Errors
-
-- Create a Gitea personal access token: **Settings** → **API Tokens**
-- Grant `api` scope
-- Add as `GITEA_TOKEN` secret in Gitea Actions secrets
-
----
-
-## FAQ
-
-**Q: Can I customize the generated files?**  
-A: Yes! Before merging the PR, edit the generated files. Replace `{{PLACEHOLDER}}` values with your actual domain concepts, API endpoints, etc.
-
-**Q: What if I already have agent scaffolding?**  
-A: Use `--force` flag to regenerate. Existing files are backed up or skipped depending on your setup.
-
-**Q: Can I run this in my CI/CD without GitHub Actions?**  
-A: Yes! The core tool is `scripts/run_transformer.py`. Run it locally:
-```bash
-python scripts/run_transformer.py --target /path/to/repo
-```
-
-**Q: Does this modify my existing code?**  
-A: No. The transformer only creates new files in `agents/`, `tools/`, `memory/`, etc. No existing files are touched.
-
-**Q: Can I call this from non-GitHub platforms?**  
-A: Yes! Use `scripts/run_transformer.py` directly. The GitLab CI / Jenkins / CircleCI integration is a wrapper around the Python script.
-
----
-
-## Next Steps
-
-1. **Copy the issue-trigger workflow** to your repo
-2. **Open an issue** with title `[agentic-ready] Transform this repo`
-3. **Review the PR** generated by the workflow
-4. **Merge** to activate agentic context
-5. **Use** with Claude Code, OpenAI Agents SDK, or any LLM
+**529 API overloaded** — the transformer has retry logic (up to 5 attempts with increasing waits). If all retries fail, wait 10–15 minutes and retrigger.

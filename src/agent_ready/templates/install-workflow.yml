@@ -1,7 +1,7 @@
 name: Agentic Ready
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
 jobs:
   check-permission:
     if: |
