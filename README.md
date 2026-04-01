@@ -3,26 +3,55 @@
 [![Version](https://img.shields.io/github/v/release/vb-nattamai/agent-ready)](https://github.com/vb-nattamai/agent-ready/releases)
 [![License](https://img.shields.io/github/license/vb-nattamai/agent-ready)](LICENSE)
 
-Transform any legacy repository into an AI-agent-ready codebase — with real content, not placeholders.
+Transform any legacy repository into an AI-agent-ready codebase — with real content written from your actual code, not template placeholders.
+
+---
+
+## Why AgentReady?
+
+AI agents fail on unfamiliar codebases because they lack context — they invent file paths, guess commands, and miss domain concepts entirely. AgentReady fixes this by generating scaffolding files that give agents real, verified knowledge of your repository before they touch a single line of code.
+
+**Proven results across real codebases — from simple to complex:**
+
+| Repo | Stack | Files | Baseline | With context | Improvement | Pass rate |
+|------|-------|-------|----------|--------------|-------------|-----------|
+| Simple bowling kata | Java, single class | 13 | 0.8 / 10 | 9.7 / 10 | **+888%** | 100% |
+| [travel-assist](https://github.com/vb-nattamai/travel-assist) | Kotlin, Spring Boot | 23 | 0.3 / 10 | 8.9 / 10 | **+855%** | 89% |
+| [bowling-kata](https://github.com/vb-nattamai/bowling-kata) | Java, Python, Go, TypeScript | 47 | 2.1 / 10 | 7.6 / 10 | **+257%** | 89% |
+
+*All benchmarks use AgentReady's built-in eval framework — Claude Haiku as evaluator and judge.*
+
+The pattern is consistent: without context an AI agent is essentially guessing on repo-specific questions. With context it answers accurately, references real file paths, and respects the actual constraints of the codebase. The polyglot monorepo scores lower because Opus was reading previously generated scaffolding files as source code — a known issue being fixed in the next release.
 
 ---
 
 ## How it works
 
-AgentReady runs in two modes:
+Two modes — choose based on your needs:
 
-**Static mode** (default, no API key needed) — scans your repo, fills templates, scores ~40–50/100 on first run. Good for a quick scaffold.
+**Static mode** (default, no API key needed)
+Scans your repo, fills templates with detected metadata. Good for a quick scaffold. First-run score: ~40–50/100.
 
-**LLM-first mode** (`--llm`, requires `ANTHROPIC_API_KEY`) — Claude Opus reads your actual code, understands your domain, and writes every output file from scratch. Scores ~85/100 on first run with real content.
+**LLM-first mode** (`--llm`, requires `ANTHROPIC_API_KEY`)
+Claude reads your actual code and writes every file from scratch. No placeholders. First-run score: ~85/100.
 
 ```
 Phase 1 — Collect   : reads file tree, source files, config, CI, README
-Phase 2 — Analyse   : Claude Opus infers domain concepts, entry points,
-                      env vars, restricted paths, architecture
+Phase 2 — Analyse   : Claude Opus reads your code and infers domain concepts,
+                      entry points, env vars, restricted paths, pitfalls
 Phase 3 — Generate  : Claude Sonnet writes AGENTS.md, CLAUDE.md,
                       system_prompt.md, agent-context.json, memory/schema.md
-Phase 4 — Score     : 100-point readiness score + AGENTIC_READINESS.md
+Phase 4 — Score     : 100-point readiness score
+Phase 5 — Evaluate  : measures whether context files actually improve AI responses
 ```
+
+**Model strategy:**
+
+| Phase | Model | Why |
+|-------|-------|-----|
+| Analysis | Claude Opus | Deepest reasoning over complex code |
+| Generation | Claude Sonnet | Best structured writing quality |
+| Evaluation | Claude Haiku | 36 API calls — speed and cost matter |
 
 ---
 
@@ -31,27 +60,24 @@ Phase 4 — Score     : 100-point readiness score + AGENTIC_READINESS.md
 ### Install
 
 ```bash
-pip install git+https://github.com/vb-nattamai/agent-ready.git
+pip install "git+https://github.com/vb-nattamai/agent-ready.git[ai]"
 ```
 
-### Run (static mode — no API key)
+### Run locally
 
 ```bash
+# Static mode — no API key needed
 agent-ready --target /path/to/your/repo
-```
 
-### Run (LLM-first mode — real content)
-
-```bash
+# LLM-first mode — real content from real code
 export ANTHROPIC_API_KEY="sk-ant-..."
 agent-ready --target /path/to/your/repo --llm
-```
 
-### Preview without writing files
+# Transform + measure improvement in one shot
+agent-ready --target /path/to/your/repo --llm --eval
 
-```bash
+# Preview without writing any files
 agent-ready --target /path/to/your/repo --dry-run
-agent-ready --target /path/to/your/repo --llm --dry-run
 ```
 
 ---
@@ -62,22 +88,24 @@ The recommended way for teams. Open an issue in your repo, get a PR automaticall
 
 ### Step 1 — Install the trigger workflow
 
-Run **"Install Agentic Ready to Repo"** from the [Actions tab](https://github.com/vb-nattamai/agent-ready/actions/workflows/install-to-repo.yml):
+Run **"Install AgentReady to Target Repository"** from the [Actions tab](https://github.com/vb-nattamai/agent-ready/actions/workflows/install-to-target-repo.yml):
 
 - **target_repo**: `myorg/my-legacy-api`
-- **llm**: ✅ (enable LLM-first mode)
+- **llm**: ✅ enable LLM-first mode
+- **eval**: ✅ enable eval after transformation (optional)
 
 This pushes three files into your repo:
 - `.github/workflows/agentic-ready.yml` — issue trigger
-- `.github/workflows/context-refresh.yml` — weekly drift detection
+- `.github/workflows/context-drift-detector.yml` — weekly drift detection
 - `.github/ISSUE_TEMPLATE/agentic-ready.yml` — pre-filled issue form
 
-### Step 2 — Add your API key
+### Step 2 — Add your secrets
 
 In your target repo → Settings → Secrets and variables → Actions:
 
 ```
-ANTHROPIC_API_KEY = sk-ant-...
+ANTHROPIC_API_KEY = sk-ant-...   # required for LLM mode
+INSTALL_TOKEN     = ghp_...      # PAT with repo + workflow scopes
 ```
 
 ### Step 3 — Open an issue
@@ -91,9 +119,10 @@ Issue opened
     ├─ 2. Calls agent-ready's reusable transformer
     ├─ 3. Claude Opus analyses your codebase (~60s)
     ├─ 4. Claude Sonnet writes all scaffolding files
-    ├─ 5. Opens a PR: "🤖 Add agentic-ready scaffolding"
-    ├─ 6. Comments on your issue with the PR link
-    └─ 7. Closes the issue ✅
+    ├─ 5. (Optional) Claude Haiku evaluates context quality
+    ├─ 6. Opens a PR: "🤖 Add agentic-ready scaffolding"
+    ├─ 7. Comments on your issue with the PR link
+    └─ 8. Closes the issue ✅
 ```
 
 ### Step 4 — Review and merge the PR
@@ -106,8 +135,39 @@ Issue opened
 | `system_prompt.md` | Universal system prompt for any LLM |
 | `mcp.json` | MCP server configuration |
 | `memory/schema.md` | Agent memory/state contract |
+| `AGENTIC_EVAL.md` | Evaluation report — improvement delta per category |
 
-> The `static` section of `agent-context.json` is safe to edit manually. The `dynamic` section is auto-refreshed.
+> The `static` section of `agent-context.json` is safe to edit manually. The `dynamic` section is auto-refreshed on every scan.
+
+---
+
+## Eval Framework
+
+AgentReady measures whether the generated files actually improve AI responses — not just whether the files exist.
+
+```bash
+# Run eval after transformation
+agent-ready --target /path/to/repo --llm --eval
+
+# Run eval only against existing context files
+agent-ready --target /path/to/repo --eval-only
+
+# Use as a CI gate — fail if pass rate < 80%
+agent-ready --target /path/to/repo --eval-only --fail-level 0.8
+```
+
+**How it works:**
+
+Each question is asked twice — once with no context (baseline) and once with your generated files as the system prompt. A judge model scores both responses. The improvement delta is your eval score.
+
+**9 questions across 5 categories:**
+- **Commands** — are the build/test/run commands correct?
+- **Safety** — does the AI respect restricted paths?
+- **Domain** — does the AI understand the business logic?
+- **Architecture** — does the AI know the entry point and structure?
+- **Pitfalls** — does the AI know the specific gotchas in this codebase?
+
+Results are saved to `AGENTIC_EVAL.md` with a full per-question breakdown.
 
 ---
 
@@ -131,20 +191,29 @@ agent-ready --target /path/to/repo --llm --dry-run
 # Force overwrite existing files
 agent-ready --target /path/to/repo --llm --force
 
+# Transform + evaluate
+agent-ready --target /path/to/repo --llm --eval
+
+# Evaluate only (context files already exist)
+agent-ready --target /path/to/repo --eval-only
+
+# CI gate — exit 1 if eval pass rate < 80%
+agent-ready --target /path/to/repo --eval-only --fail-level 0.8
+
 # Suppress output (CI-friendly)
 agent-ready --target /path/to/repo --llm --quiet
 
 # Install pre-commit hook for automatic context refresh
 agent-ready --target /path/to/repo --install-hooks
 
-# Verify generated context with Claude Haiku
+# Verify generated context with Claude
 agent-ready --target /path/to/repo --verify
 ```
 
 **Environment variables:**
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."   # Required for --llm mode
+export ANTHROPIC_API_KEY="sk-ant-..."   # Required for --llm and --eval modes
 export OPENAI_API_KEY="sk-..."          # Optional
 export GOOGLE_API_KEY="..."             # Optional
 ```
@@ -153,7 +222,7 @@ export GOOGLE_API_KEY="..."             # Optional
 
 ## Agentic Readiness Score
 
-Every run outputs a 100-point score:
+Every run outputs a 100-point score — an actionable to-do list, not a grade.
 
 | Criterion | Points |
 |-----------|--------|
@@ -162,7 +231,7 @@ Every run outputs a 100-point score:
 | `AGENTS.md` exists | 10 |
 | `system_prompt.md` exists | 5 |
 | `tools/` has ≥1 file | 10 |
-| Entry point file exists | 10 |
+| Entry point file verified | 10 |
 | Test command set | 10 |
 | `restricted_write_paths` populated | 10 |
 | `environment_variables` populated | 10 |
@@ -170,9 +239,8 @@ Every run outputs a 100-point score:
 | OpenAPI spec exists | 5 |
 | CI config exists | 5 |
 
-**Static mode first run:** ~40–50/100 (placeholders in most fields)
-
-**LLM-first mode first run:** ~85/100 (real content from code analysis)
+Static mode first run: **~40–50/100**
+LLM-first mode first run: **~85/100**
 
 ---
 
@@ -180,7 +248,7 @@ Every run outputs a 100-point score:
 
 ### `reusable-transformer.yml` — Core transformer
 
-Runs inside `agent-ready`. Checks out the target repo, runs the transformer, opens a PR. All secrets (`ANTHROPIC_API_KEY`, `INSTALL_TOKEN`) live only in `agent-ready` — target repos only need `ANTHROPIC_API_KEY` for LLM mode.
+The engine. Checks out the target repo, runs the LLM pipeline, optionally runs eval, opens a PR.
 
 **Inputs:**
 
@@ -189,27 +257,33 @@ Runs inside `agent-ready`. Checks out the target repo, runs the transformer, ope
 | `target_repo` | required | Target repo in `owner/repo` format |
 | `target_branch` | `main` | Branch the PR is opened against |
 | `llm` | `false` | Enable LLM-first mode |
-| `only` | _(all)_ | Limit generation: `agents`, `tools`, `context`, `memory` |
+| `eval` | `false` | Run eval after transformation |
+| `fail_level` | `0.0` | Exit 1 if eval pass rate below threshold |
+| `only` | _(all)_ | Limit: `agents`, `tools`, `context`, `memory` |
 | `force` | `false` | Overwrite existing generated files |
 | `issue_number` | _(none)_ | Issue to close after PR is opened |
 
-### `install-to-repo.yml` — One-click install
+### `install-to-target-repo.yml` — One-click installer
 
-Triggered manually from the Actions tab. Pushes trigger workflows into any target repo.
+Triggered manually from the Actions tab. Pushes trigger workflows into any target repo and creates the first transformation issue automatically.
 
 **Requires:** `INSTALL_TOKEN` secret (PAT with `repo` + `workflow` scopes).
 
-### `context-refresh.yml` — Weekly drift detection
+### `context-drift-detector.yml` — Weekly drift detection
 
-Runs every Monday. Detects if `agent-context.json` has drifted from the current codebase and opens a PR if so.
+Runs every Monday at 09:00 UTC. Detects if `agent-context.json` has structurally drifted from the current codebase (ignoring `last_scanned` timestamp changes) and opens a PR if drift is found. Also installed into target repos by the installer.
+
+### `validate-token-permissions.yml` — Token validation
+
+Creates a test branch in a target repo, pushes it, and immediately deletes it. Use this to verify your `INSTALL_TOKEN` has the right permissions before triggering a real transformation — saves API calls during debugging.
 
 ### `test-dry-run.yml` — Preview without writing
 
-Runs the transformer in read-only mode against any repo. Use before the real transformation.
+Runs the transformer in read-only mode against any repo. Use before the real transformation to see what would be generated.
 
 ### `release.yml` — Semantic versioning
 
-Bumps version, updates CHANGELOG.md, and creates a GitHub Release on every push to `main`.
+Bumps version, updates `CHANGELOG.md`, and creates a GitHub Release on every push to `main`.
 
 | Commit prefix | Bump |
 |---|---|
@@ -229,9 +303,9 @@ agent-ready --target /path/to/repo --install-hooks
 git -C /path/to/repo config agentic.toolkit-path /path/to/agent-ready
 ```
 
-Refreshes the `dynamic` section of `agent-context.json` automatically on every commit. The `static` section is never touched.
+Automatically refreshes the `dynamic` section of `agent-context.json` whenever source files change. The `static` section (your manual edits) is never touched.
 
-**Weekly CI refresh** (teams): installed automatically by `install-to-repo.yml` as `.github/workflows/context-refresh.yml`.
+**Weekly CI drift detection** — installed automatically by the installer as `.github/workflows/context-drift-detector.yml`. Opens a PR when structural drift is detected.
 
 **Manual refresh:**
 
@@ -243,14 +317,14 @@ agent-ready --target /path/to/repo --only context --force
 
 ## Supported Languages & Frameworks
 
-- **Python** (Django, Flask, FastAPI)
-- **TypeScript / JavaScript** (React, Next.js, Node.js, Express)
-- **Java** (Spring Boot, Maven, Gradle)
-- **Kotlin** (Spring Boot, Gradle)
-- **Go** (standard library, Gin, Echo)
-- **Rust** (Cargo)
-- **C# / .NET** (ASP.NET)
-- **Ruby** (Rails)
+- **Python** — Django, Flask, FastAPI
+- **TypeScript / JavaScript** — React, Next.js, Node.js, Express
+- **Java** — Spring Boot, Maven, Gradle
+- **Kotlin** — Spring Boot, Gradle
+- **Go** — standard library, Gin, Echo
+- **Rust** — Cargo
+- **C# / .NET** — ASP.NET
+- **Ruby** — Rails
 
 ---
 
@@ -258,29 +332,47 @@ agent-ready --target /path/to/repo --only context --force
 
 | Tool | File it reads | How |
 |------|--------------|-----|
-| Claude Code | `CLAUDE.md` | Auto-loaded at session start |
+| Claude Code | `CLAUDE.md` | Auto-loaded at every session start |
 | GitHub Copilot | `.github/agents/*.agent.md` | Copilot Chat dropdown |
-| Any LLM | `system_prompt.md` | Paste as system parameter |
-| MCP clients | `mcp.json` | Loaded by MCP host |
+| Any LLM | `system_prompt.md` | Paste as the `system` parameter |
+| MCP clients | `mcp.json` | Loaded by the MCP host |
 
 ---
 
 ## Philosophy
 
-1. **LLM-first** — real content from real code analysis, not template placeholders
-2. **Never modify existing code** — only additive changes
-3. **Never hallucinate** — all generated content grounded in what the LLM actually read
-4. **Platform-agnostic** — works with Claude, OpenAI, Gemini, or any LLM
-5. **Idempotent** — safe to run multiple times
+1. **LLM-first** — Claude reads your actual code and writes real content, not template placeholders
+2. **Measurable** — the eval framework proves whether the context files actually improve AI responses
+3. **Never modify existing code** — only additive changes, always
+4. **Never hallucinate** — all generated content is grounded in what the LLM actually read
+5. **Platform-agnostic** — works with Claude, OpenAI, Gemini, or any LLM via `system_prompt.md`
+6. **Idempotent** — safe to run multiple times; the `static` section of `agent-context.json` is always preserved
 
 ---
 
 ## Contributing
 
+Contributions are very welcome. AgentReady is an early-stage open-source project and there's a lot of ground to cover.
+
+**Good first issues:**
+- Add support for a new language or framework in the static analyser
+- Improve eval question templates for specific tech stacks
+- Add an `--eval-report` flag to print results without saving to file
+- Write tests for `analyser.py` and `generator.py`
+
+**Bigger contributions:**
+- Monorepo support — detect and handle multiple modules
+- VS Code extension — surface the readiness score inline
+- `workflow_dispatch` architecture — keep all secrets in `agent-ready` only
+
+**How to contribute:**
+
 1. Fork this repository
-2. Create a feature branch (`git checkout -b feature/my-improvement`)
-3. Commit with conventional commits (`feat:`, `fix:`, `BREAKING CHANGE:`)
+2. Create a feature branch: `git checkout -b feat/my-improvement`
+3. Commit with conventional commits: `feat:`, `fix:`, `docs:`
 4. Push and open a Pull Request
+
+Please open an issue first for significant changes so we can discuss the approach before you invest time building it.
 
 ---
 
