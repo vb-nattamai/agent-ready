@@ -89,7 +89,8 @@ on:
 
 jobs:
   transform:
-    # Always runs inside agent-ready — secrets never need to exist in the target repo
+    # Runs in agent-ready. For workflow_call, secrets come from the caller repo
+    # via `secrets: inherit` (typically the target repo trigger workflow).
     runs-on: ubuntu-latest
     permissions:
       contents: read
