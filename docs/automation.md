@@ -82,6 +82,9 @@ jobs:
     secrets: inherit
 ```
 
+`secrets: inherit` means the reusable workflow receives secrets from the **caller repository**.
+For installed `agentic-ready.yml` triggers, that caller is your target repo.
+
 ---
 
 ## What Happens When It Runs
@@ -98,7 +101,7 @@ Label added to issue
     │      — AGENTS.md, CLAUDE.md, agent-context.json
     │      — system_prompt.md, mcp.json, memory/schema.md
     ├─ 5. Evaluation model measures whether context files improve AI responses
-    │      — 9 questions, with and without context
+    │      — 15 questions, with and without context
     │      — saves AGENTIC_EVAL.md with per-question results
     ├─ 6. Opens a PR: "🤖 Add agentic-ready scaffolding"
     ├─ 7. Comments on the issue with the PR link
@@ -152,7 +155,7 @@ Or re-label an existing closed issue — same effect.
 
 ## Required Secrets
 
-Add the secret for your chosen provider to your target repo under Settings → Secrets and variables → Actions:
+For installed issue-trigger runs (`agentic-ready.yml`), add secrets in the **target repo** under Settings → Secrets and variables → Actions:
 
 | Secret | Provider | Description |
 |--------|----------|-------------|
@@ -164,6 +167,20 @@ Add the secret for your chosen provider to your target repo under Settings → S
 | `TOGETHER_API_KEY` | `together` | Qwen3.5 / Llama-3.3 |
 | _(none)_ | `ollama` | Runs locally — no secret needed |
 | `INSTALL_TOKEN` | all | PAT with `repo` + `workflow` scopes |
+
+### Secret Location by Run Mode
+
+| Run mode | Where secrets must exist |
+|---|---|
+| Installed trigger in target repo (`agentic-ready.yml` via issues/labels) | Target repo secrets (passed to reusable workflow via `secrets: inherit`) |
+| Manual run in `vb-nattamai/agent-ready` (`reusable-transformer.yml` via `workflow_dispatch`) | `agent-ready` repo secrets |
+
+### Trust Boundary
+
+- trigger is permission-gated (`admin`, `maintain`, or `write`)
+- execution can push branches and open PRs in the target repo
+- treat provider keys and `INSTALL_TOKEN` as privileged credentials
+- prefer least-privilege repo-scoped tokens and rotate regularly
 
 ---
 
@@ -197,6 +214,8 @@ With inputs:
 - `target_repo`: `owner/repo`
 - `only`: `context`
 - `force`: ✅
+
+For this manual `agent-ready` run mode, secrets must be configured in the `agent-ready` repository.
 
 ---
 

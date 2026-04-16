@@ -19,10 +19,28 @@ from typing import Any
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 SKIP_DIRS = {
-    ".git", "node_modules", "__pycache__", ".venv", "venv", "env",
-    ".tox", ".mypy_cache", ".pytest_cache", "dist", "build", "target",
-    ".next", ".nuxt", "out", "coverage", ".idea", ".vscode",
-    ".gradle", ".sass-cache", "tmp", "temp",
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "env",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    "dist",
+    "build",
+    "target",
+    ".next",
+    ".nuxt",
+    "out",
+    "coverage",
+    ".idea",
+    ".vscode",
+    ".gradle",
+    ".sass-cache",
+    "tmp",
+    "temp",
 }
 
 # AgentReady-generated files — never feed back to Opus as source code
@@ -42,21 +60,51 @@ SKIP_AGENT_DIRS = {
 }
 
 SOURCE_EXTENSIONS = {
-    ".py", ".ts", ".tsx", ".js", ".jsx", ".mjs",
-    ".java", ".go", ".rs", ".cs", ".rb", ".kt",
-    ".swift", ".cpp", ".c", ".h", ".php",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".java",
+    ".go",
+    ".rs",
+    ".cs",
+    ".rb",
+    ".kt",
+    ".swift",
+    ".cpp",
+    ".c",
+    ".h",
+    ".php",
 }
 
 CONFIG_FILES = [
-    "package.json", "pom.xml", "build.gradle", "build.gradle.kts",
-    "go.mod", "Cargo.toml", "pyproject.toml", "requirements.txt",
-    "setup.py", "setup.cfg", "Makefile", "Gemfile",
-    ".env.example", ".env.sample", "docker-compose.yml", "Dockerfile",
+    "package.json",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "go.mod",
+    "Cargo.toml",
+    "pyproject.toml",
+    "requirements.txt",
+    "setup.py",
+    "setup.cfg",
+    "Makefile",
+    "Gemfile",
+    ".env.example",
+    ".env.sample",
+    "docker-compose.yml",
+    "Dockerfile",
 ]
 
 OPENAPI_PATTERNS = [
-    "openapi.yaml", "openapi.yml", "openapi.json",
-    "swagger.yaml", "swagger.yml", "swagger.json",
+    "openapi.yaml",
+    "openapi.yml",
+    "openapi.json",
+    "swagger.yaml",
+    "swagger.yml",
+    "swagger.json",
 ]
 
 MAX_SOURCE_FILES = 40
@@ -110,6 +158,7 @@ Mark any value you cannot confirm with "TODO: verify" rather than guessing.\
 
 # ── Phase 1: Collect ──────────────────────────────────────────────────────────
 
+
 def collect(target: Path, quiet: bool = False) -> dict[str, Any]:
     if not quiet:
         print("  📂 Collecting repository files...")
@@ -122,10 +171,11 @@ def collect(target: Path, quiet: bool = False) -> dict[str, Any]:
     has_openapi = False
 
     for path in sorted(target.rglob("*")):
-        if any(skip in path.parts for skip in SKIP_DIRS):
+        rel = path.relative_to(target)
+        if any(skip in rel.parts for skip in SKIP_DIRS):
             continue
         if path.is_file():
-            file_tree.append(str(path.relative_to(target)))
+            file_tree.append(str(rel))
 
     for name in ["README.md", "README.rst", "README.txt", "README"]:
         p = target / name
@@ -158,19 +208,20 @@ def collect(target: Path, quiet: bool = False) -> dict[str, Any]:
         for f in sorted(target.rglob(f"*{ext}")):
             if collected >= MAX_SOURCE_FILES:
                 break
-            if any(skip in f.parts for skip in SKIP_DIRS):
+            rel = f.relative_to(target)
+            if any(skip in rel.parts for skip in SKIP_DIRS):
                 continue
-            if any(marker in f.parts for marker in test_markers):
+            if any(marker in rel.parts for marker in test_markers):
                 continue
             # Never feed AgentReady's own output back to the analysis model
             if f.name in SKIP_AGENT_FILES:
                 continue
-            if any(skip in f.parts for skip in SKIP_AGENT_DIRS):
+            if any(skip in rel.parts for skip in SKIP_AGENT_DIRS):
                 continue
             if f.stat().st_size / 1024 > MAX_FILE_KB:
                 continue
             try:
-                source_files[str(f.relative_to(target))] = f.read_text(errors="ignore")[:3000]
+                source_files[str(rel)] = f.read_text(errors="ignore")[:3000]
                 collected += 1
             except Exception:
                 pass
@@ -190,6 +241,7 @@ def collect(target: Path, quiet: bool = False) -> dict[str, Any]:
 
 
 # ── Phase 2: LLM Analysis ─────────────────────────────────────────────────────
+
 
 def _llm_call(model: str, system: str, prompt: str, max_tokens: int = 4096) -> str:
     """Single LiteLLM call with retry logic for overloaded errors."""
@@ -214,11 +266,16 @@ def _llm_call(model: str, system: str, prompt: str, max_tokens: int = 4096) -> s
         except Exception as e:
             # Handle overloaded / service unavailable errors across all providers
             err_str = str(e).lower()
-            if any(x in err_str for x in ["529", "overloaded", "service unavailable", "rate limit", "429"]):
+            if any(
+                x in err_str
+                for x in ["529", "overloaded", "service unavailable", "rate limit", "429"]
+            ):
                 last_error = e
                 if attempt < 2:
                     wait = (30 * (attempt + 1)) + random.uniform(0, 5)
-                    print(f"  ⚠️  API overloaded, retrying in {int(wait)}s... (attempt {attempt + 1}/3)")
+                    print(
+                        f"  ⚠️  API overloaded, retrying in {int(wait)}s... (attempt {attempt + 1}/3)"
+                    )
                     time.sleep(wait)
                 else:
                     raise last_error
