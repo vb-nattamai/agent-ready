@@ -171,10 +171,11 @@ def collect(target: Path, quiet: bool = False) -> dict[str, Any]:
     has_openapi = False
 
     for path in sorted(target.rglob("*")):
-        if any(skip in path.parts for skip in SKIP_DIRS):
+        rel = path.relative_to(target)
+        if any(skip in rel.parts for skip in SKIP_DIRS):
             continue
         if path.is_file():
-            file_tree.append(str(path.relative_to(target)))
+            file_tree.append(str(rel))
 
     for name in ["README.md", "README.rst", "README.txt", "README"]:
         p = target / name
@@ -207,19 +208,20 @@ def collect(target: Path, quiet: bool = False) -> dict[str, Any]:
         for f in sorted(target.rglob(f"*{ext}")):
             if collected >= MAX_SOURCE_FILES:
                 break
-            if any(skip in f.parts for skip in SKIP_DIRS):
+            rel = f.relative_to(target)
+            if any(skip in rel.parts for skip in SKIP_DIRS):
                 continue
-            if any(marker in f.parts for marker in test_markers):
+            if any(marker in rel.parts for marker in test_markers):
                 continue
             # Never feed AgentReady's own output back to the analysis model
             if f.name in SKIP_AGENT_FILES:
                 continue
-            if any(skip in f.parts for skip in SKIP_AGENT_DIRS):
+            if any(skip in rel.parts for skip in SKIP_AGENT_DIRS):
                 continue
             if f.stat().st_size / 1024 > MAX_FILE_KB:
                 continue
             try:
-                source_files[str(f.relative_to(target))] = f.read_text(errors="ignore")[:3000]
+                source_files[str(rel)] = f.read_text(errors="ignore")[:3000]
                 collected += 1
             except Exception:
                 pass
