@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] — 2026-04-16
+
+### Added
+
+- **PR Review Agent**: `reviewer.py` module + `--review-pr <n>` CLI flag — AI-powered code review grounded in `agent-context.json`; posts APPROVE/REQUEST_CHANGES directly to GitHub
+- `pr-review-workflow.yml` template — installed into target repos, runs on every pull request
+- `.github/workflows/pr-review.yml` — AgentReady's own self-review workflow
+
+### Fixed
+
+- `analyser.py`: use relative path parts for SKIP_DIRS/SKIP_AGENT_DIRS checks — previously files under `/tmp` (Linux CI) were all silently skipped due to "tmp" appearing in absolute path parts
+- `context-drift-detector.yml`: replace em dash (U+2014) with ASCII hyphen in workflow `name:` field — fixes "workflow file issue" ghost failures on every push in target repos
+- CI: remove `--llm` flag from context-drift-detector workflow — LLM is now the default, flag was removed from CLI in v2.4.4 but not from the workflow
+
+### Changed
+
+- `context-drift-detector-workflow.yml` template: remove redundant `setuptools wheel build` from pip install; use shared `DRIFT_PR_TEMPLATE.md` instead of inline heredoc; sync git commit message to use ASCII hyphen
+
+---
 ## [2.4.4] — 2026-04-04
 
 

@@ -459,6 +459,8 @@ Examples:
   agent-ready --target /path/to/repo --eval
   agent-ready --target /path/to/repo --eval-only
   agent-ready --target /path/to/repo --eval-only --fail-level 0.8
+  agent-ready --target /path/to/repo --review-pr 42
+  agent-ready --target /path/to/repo --review-pr 42 --dry-run
 
 Supported provider presets:
   anthropic  Opus (analysis) + Sonnet (generation) + Haiku (eval)                [ANTHROPIC_API_KEY]
@@ -518,6 +520,16 @@ Or bypass presets entirely with any LiteLLM model string:
         metavar="0.0-1.0",
         help="Exit 1 if eval pass rate is below this threshold. Use as CI gate.",
     )
+    parser.add_argument(
+        "--review-pr",
+        type=int,
+        metavar="PR_NUMBER",
+        help=(
+            "Review a pull request with LLM and post a GitHub review. "
+            "Requires gh CLI and ANTHROPIC_API_KEY (or provider key). "
+            "Exits 0 on APPROVE, 1 on REQUEST_CHANGES."
+        ),
+    )
 
     args = parser.parse_args()
     target = Path(args.target).resolve()
@@ -536,6 +548,26 @@ Or bypass presets entirely with any LiteLLM model string:
 
     models = _resolve_models(args.provider, getattr(args, "model", None))
     provider_label = getattr(args, "model", None) or args.provider
+
+    # ── PR Review ─────────────────────────────────────────────────────────
+    if args.review_pr:
+        from agent_ready import reviewer
+
+        review = reviewer.run(
+            target=target,
+            pr_number=args.review_pr,
+            model=models["analysis"],
+            quiet=args.quiet,
+        )
+        if not args.dry_run:
+            ok = reviewer.post_review(args.review_pr, review["decision"], review["body"], target)
+            if ok and not args.quiet:
+                icon = "✅" if review["decision"] == "APPROVE" else "🔴"
+                print(f"  {icon} Review posted to PR #{args.review_pr}")
+            elif not ok:
+                print("  ❌ Failed to post review via gh CLI")
+                sys.exit(1)
+        sys.exit(0 if review["decision"] == "APPROVE" else 1)
 
     # ── Eval-only path ────────────────────────────────────────────────────
     if args.eval_only:

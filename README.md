@@ -101,9 +101,10 @@ Run **"Install AgentReady to Target Repository"** from the [Actions tab](https:/
 - **provider**: `anthropic` (or `openai`, `google`, `groq`, `mistral`, `together`, `ollama`)
 - **eval**: ✅ enable eval after transformation (optional)
 
-This pushes three files into your repo:
+This pushes four files into your repo:
 - `.github/workflows/agentic-ready.yml` — issue trigger
 - `.github/workflows/context-drift-detector.yml` — weekly drift detection
+- `.github/workflows/pr-review-workflow.yml` ← new
 - `.github/ISSUE_TEMPLATE/agentic-ready.yml` — pre-filled issue form
 
 ### Step 2 — Add your secrets
@@ -230,6 +231,12 @@ agent-ready --target /path/to/repo --install-hooks
 
 # Verify generated context with the evaluation model
 agent-ready --target /path/to/repo --verify
+
+# Review a PR and post a GitHub review
+agent-ready --target /path/to/repo --review-pr 42
+
+# Dry-run: see the review decision without posting
+agent-ready --target /path/to/repo --review-pr 42 --dry-run
 ```
 
 **Environment variables (set the one for your chosen provider):**
@@ -304,6 +311,21 @@ Triggered manually from the Actions tab. Pushes trigger workflows into any targe
 ### `context-drift-detector.yml` — Weekly drift detection
 
 Runs every Monday at 09:00 UTC. Detects if `agent-context.json` has structurally drifted from the current codebase and opens a PR if drift is found. Also installed into target repos by the installer.
+
+### `pr-review-workflow.yml` — AI-powered PR review
+
+Installs into target repos. Runs on every pull request and posts an **APPROVE** or **REQUEST_CHANGES** review grounded in `agent-context.json` — so the reviewer understands your architecture, restricted paths, domain concepts, and known pitfalls before reading a single line of diff.
+
+**How it works:**
+1. Checks out the base branch (never runs untrusted PR code)
+2. Loads `agent-context.json` for architecture context
+3. Fetches the PR diff via `gh pr diff`
+4. Sends diff + context to the LLM for structured analysis
+5. Posts a review with specific file/line comments
+
+**Requires:** `ANTHROPIC_API_KEY` secret in the target repo (or your provider's key).
+
+**Security note:** Uses `pull_request_target` — the review script always runs from the base branch, keeping secrets inaccessible to PR authors.
 
 ### `validate-token-permissions.yml` — Token validation
 
