@@ -3,6 +3,13 @@ AgentReady - PR Reviewer
 
 Reviews pull requests using LLM reasoning grounded in the repo's
 agent-context.json. Provider-agnostic via LiteLLM.
+
+Trust boundary
+--------------
+PR diffs and descriptions from `fetch_pr_diff` / `fetch_pr_metadata` are
+treated as untrusted user content. They are sent to an external LLM API
+(e.g. Anthropic, OpenAI) inside the prompt — never executed locally. All
+subprocess calls use argument lists (no shell=True) to prevent injection.
 """
 
 from __future__ import annotations
