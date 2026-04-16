@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] — 2026-04-16
+
+### Added
+
+- (reviewer): add LLM-powered PR review agent
+
+### Fixed
+
+- (reviewer): address security review feedback
+- (analyser): use relative path parts for SKIP_DIRS check
+- replace em dash with ASCII hyphen in workflow names and format Python files
+- remove --llm flag from context-drift-detector workflow
+
+### Changed
+
+- ci: add codeql and dependabot
+- refactor: split evaluator into testable helper functions
+- test: add deterministic coverage for analyser and generator
+- docs: align automation and secret handling guidance
+- ci: add repo validation workflow for tests and lint
+
+---
 ## [2.5.0] — 2026-04-16
 
 ### Added
