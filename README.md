@@ -327,6 +327,8 @@ Installs into target repos. Runs on every pull request and posts an **APPROVE** 
 
 **Security note:** Uses `pull_request_target` — the review script always runs from the base branch, keeping secrets inaccessible to PR authors.
 
+**Privacy note:** PR diffs and descriptions are sent to an external LLM API (Anthropic by default). Do not use this workflow if your diffs may contain secrets or confidential material not suitable for third-party processing.
+
 ### `validate-token-permissions.yml` — Token validation
 
 Creates a test branch in a target repo, pushes it, and immediately deletes it. Confirms `INSTALL_TOKEN` permissions before triggering a real transformation.

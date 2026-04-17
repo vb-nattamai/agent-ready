@@ -6,6 +6,10 @@ on:
 
 jobs:
   review:
+    # Secrets are unavailable on fork PRs — skip rather than silently no-op.
+    # The installed template (pr-review-workflow.yml) uses pull_request_target
+    # for target repos, which safely gives secret access from the base branch.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read

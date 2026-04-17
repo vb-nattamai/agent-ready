@@ -36,6 +36,19 @@ def test_flatten_analysis_context_merges_static_dynamic() -> None:
     assert flattened["test_command"] == "pytest -q"
 
 
+def test_flatten_analysis_context_returns_flat_dict_unchanged() -> None:
+    flat = {"test_command": "pytest", "build_system": "pip"}
+    assert evaluator._flatten_analysis_context(flat) == flat
+
+
+def test_aggregate_results_returns_zeros_for_empty_list() -> None:
+    summary = evaluator._aggregate_results([])
+    assert summary["baseline_score"] == 0
+    assert summary["context_score"] == 0
+    assert summary["pass_rate"] == 0
+    assert summary["category_breakdown"] == {}
+
+
 def test_build_question_result_maps_scores_and_delta() -> None:
     question = _sample_question()
     result = evaluator._build_question_result(
