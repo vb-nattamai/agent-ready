@@ -112,9 +112,8 @@ jobs:
             echo "❌ Invalid repo format. Use: owner/repo"
             exit 1
           fi
-          allowed_providers="anthropic openai google groq mistral together ollama"
-          if [[ -n "$PROVIDER" ]] && ! echo "$allowed_providers" | grep -qw "$PROVIDER"; then
-            echo "❌ Unknown provider '$PROVIDER'. Allowed: $allowed_providers"
+          if [[ -n "$PROVIDER" ]] && [[ ! "$PROVIDER" =~ ^(anthropic|openai|google|groq|mistral|together|ollama)$ ]]; then
+            echo "❌ Unknown provider '$PROVIDER'. Allowed: anthropic openai google groq mistral together ollama"
             exit 1
           fi
           echo "✅ Target:   $TARGET_REPO@$TARGET_BRANCH"
@@ -170,16 +169,16 @@ jobs:
           INPUT_EVAL: ${{ inputs.eval }}
           INPUT_FAIL_LEVEL: ${{ inputs.fail_level }}
         run: |
-          CMD="python $GITHUB_WORKSPACE/agent-ready/src/agent_ready/cli.py --target ./target-repo"
-          [ -n "$INPUT_ONLY" ]                  && CMD="$CMD --only $INPUT_ONLY"
-          [ "$INPUT_FORCE" = "true" ]           && CMD="$CMD --force"
-          [ -n "$INPUT_PROVIDER" ]              && CMD="$CMD --provider $INPUT_PROVIDER"
-          [ "$INPUT_EVAL" = "true" ]            && CMD="$CMD --eval"
-          [ "$INPUT_FAIL_LEVEL" != "0.0" ]      && CMD="$CMD --fail-level $INPUT_FAIL_LEVEL"
+          CMD=(python "$GITHUB_WORKSPACE/agent-ready/src/agent_ready/cli.py" --target ./target-repo)
+          [ -n "$INPUT_ONLY" ]             && CMD+=(--only      "$INPUT_ONLY")
+          [ "$INPUT_FORCE" = "true" ]      && CMD+=(--force)
+          [ -n "$INPUT_PROVIDER" ]         && CMD+=(--provider  "$INPUT_PROVIDER")
+          [ "$INPUT_EVAL" = "true" ]       && CMD+=(--eval)
+          [ "$INPUT_FAIL_LEVEL" != "0.0" ] && CMD+=(--fail-level "$INPUT_FAIL_LEVEL")
 
-          echo "Running: $CMD"
+          echo "Running: ${CMD[*]}"
           echo ""
-          $CMD
+          "${CMD[@]}"
 
           cd target-repo
           if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard)" ]; then
@@ -275,7 +274,7 @@ jobs:
           PR_URL: ${{ steps.pr.outputs.pr_url }}
           ISSUE: ${{ inputs.issue_number }}
           TARGET_REPO: ${{ inputs.target_repo }}
-
+        run: |
           if [ -n "$PR_URL" ]; then
             gh issue comment "$ISSUE" \
               --repo "$TARGET_REPO" \

@@ -54,9 +54,8 @@ jobs:
             echo "❌ Invalid repo format. Use: owner/repo"
             exit 1
           fi
-          allowed_providers="anthropic openai google groq mistral together ollama"
-          if [[ -n "$PROVIDER" ]] && ! echo "$allowed_providers" | grep -qw "$PROVIDER"; then
-            echo "❌ Unknown provider '$PROVIDER'. Allowed: $allowed_providers"
+          if [[ -n "$PROVIDER" ]] && [[ ! "$PROVIDER" =~ ^(anthropic|openai|google|groq|mistral|together|ollama)$ ]]; then
+            echo "❌ Unknown provider '$PROVIDER'. Allowed: anthropic openai google groq mistral together ollama"
             exit 1
           fi
           echo "✅ Target:     $TARGET_REPO"
@@ -100,15 +99,14 @@ jobs:
           INPUT_PROVIDER: ${{ inputs.provider }}
           INPUT_FAIL_LEVEL: ${{ inputs.fail_level }}
         run: |
-          CMD="python $GITHUB_WORKSPACE/agent-ready/src/agent_ready/cli.py"
-          CMD="$CMD --target ./target-repo"
-          CMD="$CMD --eval-only"
-          [ -n "$INPUT_PROVIDER" ]                  && CMD="$CMD --provider $INPUT_PROVIDER"
-          [ "$INPUT_FAIL_LEVEL" != "0.0" ]          && CMD="$CMD --fail-level $INPUT_FAIL_LEVEL"
+          CMD=(python "$GITHUB_WORKSPACE/agent-ready/src/agent_ready/cli.py"
+               --target ./target-repo --eval-only)
+          [ -n "$INPUT_PROVIDER" ]         && CMD+=(--provider   "$INPUT_PROVIDER")
+          [ "$INPUT_FAIL_LEVEL" != "0.0" ] && CMD+=(--fail-level "$INPUT_FAIL_LEVEL")
 
-          echo "Running: $CMD"
+          echo "Running: ${CMD[*]}"
           echo ""
-          $CMD
+          "${CMD[@]}"
 
           EVAL_FILE="./target-repo/AGENTIC_EVAL.md"
           if [ -f "$EVAL_FILE" ]; then
