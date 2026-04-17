@@ -17,6 +17,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-workflow.yml` template — `eval` now defaults to `true`; transformation runs include evaluation by default
 - `install-to-target-repo.yml` — installer now also pushes `agentic-ready-eval.yml` into target repos (5 files total)
 
+---
+
+## [2.5.2] — 2026-04-17
+
+### Added
+
+- (installer): also push pr-review-workflow.yml to target repos
+
+### Fixed
+
+- address PR review agent feedback
+
+---
 ## [2.5.1] — 2026-04-16
 
 ### Added
