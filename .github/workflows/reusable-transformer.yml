@@ -96,31 +96,45 @@ jobs:
       contents: read
 
     steps:
+      # All inputs are passed through env vars — never interpolated directly
+      # into run: shell blocks — to prevent expression injection.
       - name: Validate inputs
+        env:
+          TARGET_REPO: ${{ inputs.target_repo }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          PROVIDER: ${{ inputs.provider }}
+          INPUT_EVAL: ${{ inputs.eval }}
+          INPUT_FAIL_LEVEL: ${{ inputs.fail_level }}
+          INPUT_ONLY: ${{ inputs.only }}
+          INPUT_FORCE: ${{ inputs.force }}
         run: |
-          if [[ ! "${{ inputs.target_repo }}" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+          if [[ ! "$TARGET_REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
             echo "❌ Invalid repo format. Use: owner/repo"
             exit 1
           fi
-          echo "✅ Target:   ${{ inputs.target_repo }}@${{ inputs.target_branch }}"
-          echo "   Provider: ${{ inputs.provider }}"
-          echo "   Eval:     ${{ inputs.eval }}"
-          echo "   Fail level: ${{ inputs.fail_level }}"
-          echo "   Only:     ${{ inputs.only || 'all' }}"
-          echo "   Force:    ${{ inputs.force }}"
-
+          allowed_providers="anthropic openai google groq mistral together ollama"
+          if [[ -n "$PROVIDER" ]] && ! echo "$allowed_providers" | grep -qw "$PROVIDER"; then
+            echo "❌ Unknown provider '$PROVIDER'. Allowed: $allowed_providers"
+            exit 1
+          fi
+          echo "✅ Target:   $TARGET_REPO@$TARGET_BRANCH"
+          echo "   Provider: $PROVIDER"
+          echo "   Eval:     $INPUT_EVAL"
+          echo "   Fail level: $INPUT_FAIL_LEVEL"
+          echo "   Only:     ${INPUT_ONLY:-all}"
+          echo "   Force:    $INPUT_FORCE"
       - name: Checkout agent-ready (this repo — contains the transformer)
         uses: actions/checkout@v6
         with:
           repository: vb-nattamai/agent-ready
-          token: ${{ secrets.INSTALL_TOKEN || github.token }}
+          token: ${{ secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token }}
           path: agent-ready
 
       - name: Checkout target repository
         uses: actions/checkout@v6
         with:
           repository: ${{ inputs.target_repo }}
-          token: ${{ secrets.INSTALL_TOKEN || github.token }}
+          token: ${{ secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token }}
           path: target-repo
           fetch-depth: 0
 
@@ -150,13 +164,18 @@ jobs:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
           PYTHONPATH: ${{ github.workspace }}/agent-ready/src
+          INPUT_ONLY: ${{ inputs.only }}
+          INPUT_FORCE: ${{ inputs.force }}
+          INPUT_PROVIDER: ${{ inputs.provider }}
+          INPUT_EVAL: ${{ inputs.eval }}
+          INPUT_FAIL_LEVEL: ${{ inputs.fail_level }}
         run: |
           CMD="python $GITHUB_WORKSPACE/agent-ready/src/agent_ready/cli.py --target ./target-repo"
-          [ -n "${{ inputs.only }}" ]             && CMD="$CMD --only ${{ inputs.only }}"
-          [ "${{ inputs.force }}"      = "true" ] && CMD="$CMD --force"
-          [ -n "${{ inputs.provider }}" ]         && CMD="$CMD --provider ${{ inputs.provider }}"
-          [ "${{ inputs.eval }}"       = "true" ] && CMD="$CMD --eval"
-          [ "${{ inputs.fail_level }}" != "0.0" ] && CMD="$CMD --fail-level ${{ inputs.fail_level }}"
+          [ -n "$INPUT_ONLY" ]                  && CMD="$CMD --only $INPUT_ONLY"
+          [ "$INPUT_FORCE" = "true" ]           && CMD="$CMD --force"
+          [ -n "$INPUT_PROVIDER" ]              && CMD="$CMD --provider $INPUT_PROVIDER"
+          [ "$INPUT_EVAL" = "true" ]            && CMD="$CMD --eval"
+          [ "$INPUT_FAIL_LEVEL" != "0.0" ]      && CMD="$CMD --fail-level $INPUT_FAIL_LEVEL"
 
           echo "Running: $CMD"
           echo ""
@@ -173,6 +192,7 @@ jobs:
         if: steps.transform.outputs.generated == 'true'
         env:
           INSTALL_TOKEN: ${{ secrets.INSTALL_TOKEN }}
+          INPUT_TARGET_REPO: ${{ inputs.target_repo }}
         run: |
           cd target-repo
 
@@ -188,7 +208,7 @@ jobs:
             echo "No staged changes — skipping commit."
           else
             git commit -m "feat: add agentic-ready scaffolding [skip ci]"
-            git push "https://x-access-token:${INSTALL_TOKEN}@github.com/${{ inputs.target_repo }}.git" "$BRANCH_NAME"
+            git push "https://x-access-token:${INSTALL_TOKEN}@github.com/${INPUT_TARGET_REPO}.git" "$BRANCH_NAME"
           fi
 
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
@@ -197,11 +217,13 @@ jobs:
         if: steps.transform.outputs.generated == 'true'
         id: pr
         env:
-          GH_TOKEN: ${{ secrets.INSTALL_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token }}
+          INPUT_TARGET_REPO: ${{ inputs.target_repo }}
+          INPUT_TARGET_BRANCH: ${{ inputs.target_branch }}
         run: |
-          BRANCH_NAME="${{ env.BRANCH_NAME }}"
-          TARGET_REPO="${{ inputs.target_repo }}"
-          TARGET_BRANCH="${{ inputs.target_branch }}"
+          BRANCH_NAME="${BRANCH_NAME}"
+          TARGET_REPO="$INPUT_TARGET_REPO"
+          TARGET_BRANCH="$INPUT_TARGET_BRANCH"
 
           gh label create agentic-ready \
             --repo "$TARGET_REPO" \
@@ -238,19 +260,21 @@ jobs:
 
       - name: Post success summary
         if: steps.pr.outputs.pr_url != ''
+        env:
+          INPUT_TARGET_REPO: ${{ inputs.target_repo }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
         run: |
           echo "✅ Transformation complete!"
-          echo "   Target: ${{ inputs.target_repo }}"
-          echo "   PR:     ${{ steps.pr.outputs.pr_url }}"
+          echo "   Target: $INPUT_TARGET_REPO"
+          echo "   PR:     $PR_URL"
 
       - name: Close triggering issue in target repo
         if: inputs.issue_number != ''
         env:
-          GH_TOKEN: ${{ secrets.INSTALL_TOKEN || github.token }}
-        run: |
-          PR_URL="${{ steps.pr.outputs.pr_url }}"
-          ISSUE="${{ inputs.issue_number }}"
-          TARGET_REPO="${{ inputs.target_repo }}"
+          GH_TOKEN: ${{ secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
+          ISSUE: ${{ inputs.issue_number }}
+          TARGET_REPO: ${{ inputs.target_repo }}
 
           if [ -n "$PR_URL" ]; then
             gh issue comment "$ISSUE" \

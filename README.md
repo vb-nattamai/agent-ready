@@ -159,31 +159,90 @@ Issue opened
 
 ## Eval Framework
 
-AgentReady measures whether the generated files actually improve AI responses — not just whether the files exist.
+AgentReady measures whether the generated files **actually improve AI responses** — not just whether the files exist. It answers: *"If an agent reads these context files, does it give better, safer, more accurate answers?"*
 
 ```bash
-# Eval after transformation
+# Run eval right after transformation
 agent-ready --target /path/to/repo --eval
 
-# Run eval only against existing context files
+# Run eval only (context files already exist)
 agent-ready --target /path/to/repo --eval-only
 
-# Use as a CI gate — fail if pass rate < 80%
+# CI gate — fail the step if pass rate < 80%
 agent-ready --target /path/to/repo --eval-only --fail-level 0.8
 ```
 
-**How it works:**
+---
 
-Each of 15 questions is asked twice — once with no context (baseline) and once with your generated files as the system prompt. A judge model scores both responses on a 0–10 scale. The delta is your improvement.
+### Step 1 — Question generation
 
-**15 questions across 5 categories:**
-- **Commands** (3q) — are the build, test, and install commands exact?
-- **Safety** (2q) — does the AI respect restricted paths and secret rules?
-- **Domain** (2q) — does the AI understand the business logic and concepts?
-- **Architecture** (3q) — does the AI know the entry point, language, and structure?
-- **Pitfalls** (5q) — does the AI know the specific gotchas that will break this codebase?
+The evaluator reads `agent-context.json` and asks an LLM to generate **15 repo-specific questions** across 5 categories. Questions are not generic ("what does this repo do?") — they are grounded in your actual commands, file paths, domain concepts, and pitfalls. A new set is generated each run.
 
-The pitfalls category uses 5 targeted questions — one per pitfall type — because a single generic question lets models answer without real codebase knowledge. Results are saved to `AGENTIC_EVAL.md` with a verdict, category scores, per-question tables, and a "What to Improve" section.
+**5 question categories:**
+
+| Category | Count | What it tests |
+|---|---|---|
+| **commands** | 3 | Exact test, build, and install commands |
+| **safety** | 2 | Restricted paths, secret handling rules |
+| **domain** | 2 | Business concepts, key domain terms |
+| **architecture** | 3 | Entry point, language/framework, module layout |
+| **pitfalls** | 5 | Specific gotchas that will break *this* codebase |
+
+The pitfalls category always generates 5 questions — one per pitfall type found — because a single generic pitfall question lets models answer generically without codebase knowledge.
+
+---
+
+### Step 2 — Baseline vs. context comparison
+
+Each question is asked **twice** using the same model:
+
+1. **Baseline** — question only, no context. Represents what an AI agent knows *without* your files.
+2. **With context** — question with `agent-context.json`, `AGENTS.md`, and `CLAUDE.md` loaded as the system prompt. Represents what the agent knows *with* your files.
+
+The delta between the two is the measurable value added by your scaffolding.
+
+---
+
+### Step 3 — Three-judge panel (multi-agent)
+
+The "with context" response goes through a **panel of three specialist judges**, each running concurrently with the same model but a different system prompt:
+
+| Judge | Specialisation | Fails when… |
+|---|---|---|
+| 🔬 **Factual Accuracy** | Exact facts — commands, file paths, class names | Any flag, path, or name differs from ground truth |
+| 🔄 **Semantic Equivalence** | Same meaning, different words | Meaning is materially wrong or incomplete |
+| 🛡️ **Operational Safety** | Safe to act on | Response would break the build, leak a secret, or hallucinate a path |
+
+**Verdict = majority vote** — at least **2 of 3 judges** must pass the response. This prevents a single overly strict or overly lenient judge from flipping the outcome. The final score is the mean of all three judges' 0–10 scores.
+
+The baseline uses a single judge (it is a reference point only; the panel is applied where it matters — the context response).
+
+```
+Question: "How do I run the tests?"
+
+  🔬 Factual:    8/10 ✓  (exact command present)
+  🔄 Semantic:   9/10 ✓  (meaning correct)
+  🛡️ Safety:    7/10 ✓  (safe to run)
+
+  Panel vote:  3/3  →  ✅ PASS  (score: 8.0/10)
+```
+
+---
+
+### Output — `AGENTIC_EVAL.md`
+
+Results are saved to `AGENTIC_EVAL.md` in the repo root and include:
+
+- **Verdict** — ✅ Strong / ⚠️ Moderate / ❌ Weak improvement
+- **Score table** — baseline vs. context scores and delta per category
+- **Per-question breakdown** — ground truth, judge panel votes and reasoning
+- **What to Improve** — list of failed questions with what was missing
+
+Example verdict line:
+
+```
+✅ Context files significantly improve AI responses (+6.4 pts, 87% pass rate)
+```
 
 ---
 

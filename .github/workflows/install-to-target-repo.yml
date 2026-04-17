@@ -31,8 +31,13 @@ jobs:
 
     steps:
       - name: Validate inputs
+        env:
+          TARGET_REPO: ${{ inputs.target_repo }}
+          PROVIDER: ${{ inputs.provider }}
+          EVAL_MODE: ${{ inputs.eval }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
         run: |
-          if [[ ! "${{ inputs.target_repo }}" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+          if [[ ! "$TARGET_REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
             echo "❌ Invalid repo format. Use: owner/repo"
             exit 1
           fi
@@ -40,9 +45,9 @@ jobs:
             echo "⚠️  INSTALL_TOKEN not set — falling back to github.token"
             echo "   This will fail for repos outside this org."
           fi
-          echo "✅ Installing to: ${{ inputs.target_repo }}@${{ inputs.target_branch }}"
-          echo "   Provider:  ${{ inputs.provider }}"
-          echo "   Eval mode: ${{ inputs.eval }}"
+          echo "✅ Installing to: $TARGET_REPO@$TARGET_BRANCH"
+          echo "   Provider:  $PROVIDER"
+          echo "   Eval mode: $EVAL_MODE"
 
       - name: Checkout toolkit (for workflow templates)
         uses: actions/checkout@v6
@@ -51,7 +56,7 @@ jobs:
 
       - name: Push trigger workflows into target repo
         env:
-          GH_TOKEN: ${{ secrets.INSTALL_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token }}
           TARGET_REPO: ${{ inputs.target_repo }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
           PROVIDER: ${{ inputs.provider }}
@@ -115,7 +120,7 @@ jobs:
 
       - name: Create or reuse AgentReady issue to trigger transformation
         env:
-          GH_TOKEN: ${{ secrets.INSTALL_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token }}
           TARGET_REPO: ${{ inputs.target_repo }}
         run: |
           gh label create agentic-ready \
@@ -147,6 +152,7 @@ jobs:
         env:
           TARGET_REPO: ${{ inputs.target_repo }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
+          PROVIDER: ${{ inputs.provider }}
         run: |
           echo "✅ Installation complete!"
           echo ""
@@ -161,5 +167,5 @@ jobs:
           echo "   Monitor progress: https://github.com/${TARGET_REPO}/actions"
           echo ""
           echo "   Required secrets in ${TARGET_REPO}:"
-          echo "   • API key for provider '${{ inputs.provider }}'"
+          echo "   • API key for provider '$PROVIDER'"
           echo "   • INSTALL_TOKEN — PAT with repo + workflow scopes"

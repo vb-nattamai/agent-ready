@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,11 @@ def _api_call_with_retry(
         import litellm
     except ImportError:
         raise ImportError("litellm not installed. Run: pip install 'agent-ready[ai]'")
+
+    # Prevent LiteLLM from printing prompt/response content (which includes repo
+    # context and PR diffs) to stdout — same guard used in reviewer.py.
+    litellm.suppress_debug_info = True
+    litellm.set_verbose = False  # type: ignore[attr-defined]
 
     last_error = None
     for attempt in range(max_retries):
@@ -99,6 +105,52 @@ You are evaluating AI assistant responses for accuracy and helpfulness.
 Score each response from 0-10 based on the criteria provided.
 Respond ONLY with a valid JSON object. No markdown, no preamble.\
 """
+
+# ── Multi-agent judge panel ───────────────────────────────────────────────────
+# Three specialist judges evaluate every context response independently.
+# Final verdict = majority vote (≥ 2/3). This prevents a single biased or
+# hallucinating judge from flipping the outcome.
+
+JUDGE_PANELS: list[dict[str, str]] = [
+    {
+        "name": "factual",
+        "label": "Factual Accuracy",
+        "icon": "🔬",
+        "system": """\
+You are a STRICT factual accuracy judge evaluating AI agent context file quality.
+Your sole concern: does the response contain the EXACT facts stated in the ground truth?
+Be strict — a wrong flag, wrong file path, wrong class name, or wrong command = fail.
+Score 0–10; mark correct=true only if score ≥ 7.
+Respond ONLY with valid JSON. No markdown, no preamble.\
+""",
+    },
+    {
+        "name": "semantic",
+        "label": "Semantic Equivalence",
+        "icon": "🔄",
+        "system": """\
+You are a SEMANTIC EQUIVALENCE judge evaluating AI agent context file quality.
+Your sole concern: does the response convey the same meaning as the ground truth,
+even if worded differently? A correct paraphrase, synonym, or reordering passes.
+Fail only when the meaning is materially wrong, incomplete, or misleading.
+Score 0–10; mark correct=true only if score ≥ 7.
+Respond ONLY with valid JSON. No markdown, no preamble.\
+""",
+    },
+    {
+        "name": "safety",
+        "label": "Operational Safety",
+        "icon": "🛡️",
+        "system": """\
+You are an OPERATIONAL SAFETY judge evaluating AI agent context file quality.
+Your sole concern: would an agent acting on this response harm the codebase?
+Fail if the response would cause: broken builds, wrong paths, violated restrictions,
+leaked secrets, or hallucinated class/file names that don't exist.
+Score 0–10; mark correct=true only if score ≥ 7.
+Respond ONLY with valid JSON. No markdown, no preamble.\
+""",
+    },
+]
 
 CATEGORY_DESCRIPTIONS = {
     "commands": "Does the agent know the exact build, test, and install commands?",
@@ -467,6 +519,97 @@ Return JSON:
     )
 
     return json.loads(_strip_markdown_fences(raw))
+
+
+# ── Multi-agent judge panel ───────────────────────────────────────────────────
+
+
+def _panel_vote(panel_results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pure function: compute majority-vote consensus from a list of judge results.
+
+    Majority = ≥ 2 out of 3 judges vote correct=True.
+    Score    = mean of all judge scores (rounded to 1dp).
+    Hallucinated = True if ANY judge flagged hallucination (conservative).
+    """
+    n = max(len(panel_results), 1)
+    votes_passed = sum(1 for p in panel_results if p.get("correct", False))
+    majority_pass = votes_passed >= 2
+
+    avg_score = round(sum(p.get("score", 0) for p in panel_results) / n, 1)
+
+    vote_summary = "; ".join(
+        f"{p['name']}={'✓' if p.get('correct') else '✗'}" for p in panel_results
+    )
+
+    return {
+        "score": avg_score,
+        "correct": majority_pass,
+        "hallucinated": any(p.get("hallucinated", False) for p in panel_results),
+        "reasoning": f"Panel {votes_passed}/{n}: {vote_summary}",
+        "key_missing": next(
+            (p["key_missing"] for p in panel_results if p.get("key_missing")), ""
+        ),
+        "panel": panel_results,
+        "panel_vote": f"{votes_passed}/{n}",
+    }
+
+
+def _multi_judge_response(
+    judge_model: str,
+    question: dict[str, Any],
+    response: str,
+) -> dict[str, Any]:
+    """Run all three specialist judges in parallel, then compute majority vote.
+
+    The three judges bring complementary concerns:
+    - Factual Accuracy  — exact facts, commands, paths, class names
+    - Semantic Equivalence — correct meaning even if phrased differently
+    - Operational Safety — would acting on this response break the codebase?
+
+    All three call the same judge_model but with different system prompts.
+    They run concurrently via ThreadPoolExecutor to keep latency low.
+    """
+    judge_prompt = f"""Evaluate this AI response against the ground truth.
+
+Question: {question["prompt"]}
+Ground truth: {question["ground_truth"]}
+Evaluation criteria: {question["evaluation_criteria"]}
+
+AI Response:
+{response}
+
+Return JSON:
+{{
+  "score": <0-10>,
+  "correct": <true if score >= 7, false otherwise>,
+  "reasoning": "<one sentence explaining the score>",
+  "hallucinated": <true if response contains invented file paths or class names not in ground truth>,
+  "key_missing": "<what specific detail was missing or wrong, empty string if correct>"
+}}"""
+
+    def _call_one_judge(panel: dict[str, str]) -> dict[str, Any]:
+        raw = _api_call_with_retry(
+            model=judge_model,
+            messages=[
+                {"role": "system", "content": panel["system"]},
+                {"role": "user", "content": judge_prompt},
+            ],
+            max_tokens=300,
+        )
+        result = json.loads(_strip_markdown_fences(raw))
+        return {"name": panel["name"], "label": panel["label"], "icon": panel["icon"], **result}
+
+    panel_results: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=len(JUDGE_PANELS)) as executor:
+        futures = {executor.submit(_call_one_judge, panel): panel for panel in JUDGE_PANELS}
+        for future in as_completed(futures):
+            panel_results.append(future.result())
+
+    # Re-order to match JUDGE_PANELS definition order for deterministic reports
+    order = {p["name"]: i for i, p in enumerate(JUDGE_PANELS)}
+    panel_results.sort(key=lambda p: order.get(p["name"], 99))
+
+    return _panel_vote(panel_results)
 
 
 # ── Ask ───────────────────────────────────────────────────────────────────────
