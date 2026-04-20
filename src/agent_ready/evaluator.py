@@ -690,9 +690,11 @@ def run_eval(
         time.sleep(1)
         context_response = _ask(eval_model, q["prompt"], system=context_system)
         time.sleep(1)
+        # Baseline: single judge — reference point only (cheaper/faster).
         baseline_judgment = _judge_response(judge_model, q, baseline_response)
         time.sleep(1)
-        context_judgment = _judge_response(judge_model, q, context_response)
+        # Context: full three-judge panel with majority vote to reduce hallucination.
+        context_judgment = _multi_judge_response(judge_model, q, context_response)
 
         result = _build_question_result(
             question=q,
