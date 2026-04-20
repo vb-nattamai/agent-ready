@@ -1,4 +1,4 @@
-name: Agentic Ready Evaluator
+name: Scaffolding Quality Evaluator
 
 on:
   workflow_dispatch:
@@ -42,28 +42,38 @@ jobs:
       contents: read
 
     steps:
+      # All inputs are passed through env vars — never interpolated directly
+      # into run: shell blocks — to prevent expression injection.
       - name: Validate inputs
+        env:
+          TARGET_REPO: ${{ inputs.target_repo }}
+          PROVIDER: ${{ inputs.provider }}
+          FAIL_LEVEL: ${{ inputs.fail_level }}
         run: |
-          if [[ ! "${{ inputs.target_repo }}" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+          if [[ ! "$TARGET_REPO" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
             echo "❌ Invalid repo format. Use: owner/repo"
             exit 1
           fi
-          echo "✅ Target:   ${{ inputs.target_repo }}"
-          echo "   Provider: ${{ inputs.provider }}"
-          echo "   Fail level: ${{ inputs.fail_level }}"
+          if [[ -n "$PROVIDER" ]] && [[ ! "$PROVIDER" =~ ^(anthropic|openai|google|groq|mistral|together|ollama)$ ]]; then
+            echo "❌ Unknown provider '$PROVIDER'. Allowed: anthropic openai google groq mistral together ollama"
+            exit 1
+          fi
+          echo "✅ Target:     $TARGET_REPO"
+          echo "   Provider:   $PROVIDER"
+          echo "   Fail level: $FAIL_LEVEL"
 
       - name: Checkout agent-ready (contains the evaluator)
         uses: actions/checkout@v6
         with:
           repository: vb-nattamai/agent-ready
-          token: ${{ secrets.INSTALL_TOKEN || github.token }}
+          token: ${{ secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token }}
           path: agent-ready
 
       - name: Checkout target repository
         uses: actions/checkout@v6
         with:
           repository: ${{ inputs.target_repo }}
-          token: ${{ secrets.INSTALL_TOKEN || github.token }}
+          token: ${{ secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token }}
           path: target-repo
 
       - name: Set up Python 3.11
@@ -86,20 +96,21 @@ jobs:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
           PYTHONPATH: ${{ github.workspace }}/agent-ready/src
+          INPUT_PROVIDER: ${{ inputs.provider }}
+          INPUT_FAIL_LEVEL: ${{ inputs.fail_level }}
         run: |
-          CMD="python $GITHUB_WORKSPACE/agent-ready/src/agent_ready/cli.py"
-          CMD="$CMD --target ./target-repo"
-          CMD="$CMD --eval-only"
-          CMD="$CMD --provider ${{ inputs.provider }}"
-          [ "${{ inputs.fail_level }}" != "0.0" ] && CMD="$CMD --fail-level ${{ inputs.fail_level }}"
+          CMD=(python "$GITHUB_WORKSPACE/agent-ready/src/agent_ready/cli.py"
+               --target ./target-repo --eval-only)
+          [ -n "$INPUT_PROVIDER" ]         && CMD+=(--provider   "$INPUT_PROVIDER")
+          [ "$INPUT_FAIL_LEVEL" != "0.0" ] && CMD+=(--fail-level "$INPUT_FAIL_LEVEL")
 
-          echo "Running: $CMD"
+          echo "Running: ${CMD[*]}"
           echo ""
-          $CMD
+          "${CMD[@]}"
 
           EVAL_FILE="./target-repo/AGENTIC_EVAL.md"
           if [ -f "$EVAL_FILE" ]; then
-            echo "has_report=true" >> $GITHUB_OUTPUT
+            echo "has_report=true"  >> $GITHUB_OUTPUT
             echo "report_path=$EVAL_FILE" >> $GITHUB_OUTPUT
           else
             echo "has_report=false" >> $GITHUB_OUTPUT
@@ -107,10 +118,12 @@ jobs:
 
       - name: Post eval report to step summary
         if: steps.eval.outputs.has_report == 'true'
+        env:
+          REPORT_PATH: ${{ steps.eval.outputs.report_path }}
         run: |
-          echo "## 📊 AgentReady Evaluation Report" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Scaffolding Quality Evaluation Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          cat "${{ steps.eval.outputs.report_path }}" >> $GITHUB_STEP_SUMMARY
+          cat "$REPORT_PATH" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload AGENTIC_EVAL.md as artifact
         if: steps.eval.outputs.has_report == 'true'
