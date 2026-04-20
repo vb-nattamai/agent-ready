@@ -546,9 +546,7 @@ def _panel_vote(panel_results: list[dict[str, Any]]) -> dict[str, Any]:
         "correct": majority_pass,
         "hallucinated": any(p.get("hallucinated", False) for p in panel_results),
         "reasoning": f"Panel {votes_passed}/{n}: {vote_summary}",
-        "key_missing": next(
-            (p["key_missing"] for p in panel_results if p.get("key_missing")), ""
-        ),
+        "key_missing": next((p["key_missing"] for p in panel_results if p.get("key_missing")), ""),
         "panel": panel_results,
         "panel_vote": f"{votes_passed}/{n}",
     }
