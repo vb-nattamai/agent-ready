@@ -325,6 +325,30 @@ its place. No generic advice. Only facts derived from the actual code.\
     )
 
 
+# ── mcp.json ──────────────────────────────────────────────────────────────────
+
+
+def generate_mcp_json(analysis: dict[str, Any]) -> str:
+    project_name = analysis.get("project_name", "project").lower().replace(" ", "-")
+    env_vars = {var: f"${{{var}}}" for var in analysis.get("environment_variables", [])[:5]}
+
+    mcp = {
+        "_comment": GENERATION_HEADER,
+        "mcpServers": {
+            f"{project_name}-agent-ready": {
+                "command": "agent-ready-mcp",
+                "args": [],
+                "env": env_vars,
+                "_note": (
+                    "Exposes transform/score/evaluate/review_pr as MCP tools. "
+                    "Install agent-ready to use: pip install agent-ready[ai]"
+                ),
+            }
+        },
+    }
+    return json.dumps(mcp, indent=2)
+
+
 # ── tools/refresh_context.py ─────────────────────────────────────────────────
 
 
