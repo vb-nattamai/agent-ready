@@ -147,9 +147,16 @@ def _llm_extract(
     parts: list[str] = []
     total = 0
     skip_extensions = {".png", ".jpg", ".gif", ".ico", ".woff", ".woff2", ".ttf", ".pdf"}
-    skip_patterns = {"AGENTIC_EVAL.md", "agent-context.json", "AGENTS.md", "CLAUDE.md",
-                     "system_prompt.md", "mcp.json", "memory/schema.md",
-                     ".github/copilot-instructions.md"}
+    skip_patterns = {
+        "AGENTIC_EVAL.md",
+        "agent-context.json",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "system_prompt.md",
+        "mcp.json",
+        "memory/schema.md",
+        ".github/copilot-instructions.md",
+    }
 
     for path, content in sorted(source_files.items()):
         if any(path.endswith(ext) for ext in skip_extensions):
@@ -171,10 +178,7 @@ def _llm_extract(
         {"role": "system", "content": _GROUND_TRUTH_SYSTEM},
         {
             "role": "user",
-            "content": (
-                f"Source files:\n\n{source_context}\n\n"
-                f"Question: {llm_prompt}"
-            ),
+            "content": (f"Source files:\n\n{source_context}\n\nQuestion: {llm_prompt}"),
         },
     ]
     try:

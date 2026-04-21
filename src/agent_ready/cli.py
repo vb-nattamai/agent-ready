@@ -423,9 +423,9 @@ def _run_eval_pipeline(
     try:
         result = evaluator.run_eval(
             target=target,
-            eval_model=models["analysis"],      # strong model for context responses
-            judge_model=models["analysis"],     # strong model for judging
-            baseline_model=models["evaluation"], # weak/cheap model for no-context baseline
+            eval_model=models["analysis"],  # strong model for context responses
+            judge_model=models["analysis"],  # strong model for judging
+            baseline_model=models["evaluation"],  # weak/cheap model for no-context baseline
             fail_level=fail_level,
             quiet=quiet,
         )
