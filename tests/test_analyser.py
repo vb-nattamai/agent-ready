@@ -37,7 +37,61 @@ def test_collect_skips_ignored_and_generated_content(tmp_path: Path) -> None:
     assert collected["has_openapi"] is True
 
 
-def test_collect_caps_source_files_at_max_source_files(tmp_path: Path) -> None:
+def test_collect_excludes_agent_ready_workflows_from_ci_files(tmp_path: Path) -> None:
+    """AgentReady's own workflow files must NOT appear in ci_files sent to the LLM."""
+    _write(tmp_path / "src" / "app.py", "print('app')\n")
+    _write(tmp_path / ".github" / "workflows" / "agentic-ready.yml", "name: Agentic Ready\n")
+    _write(tmp_path / ".github" / "workflows" / "agentic-ready-eval.yml", "name: Eval\n")
+    _write(tmp_path / ".github" / "workflows" / "context-drift-detector.yml", "name: Drift\n")
+    _write(tmp_path / ".github" / "workflows" / "pr-review.yml", "name: PR Review\n")
+    _write(tmp_path / ".github" / "workflows" / "ci.yml", "name: CI\non: [push]\n")
+
+    collected = analyser.collect(tmp_path, quiet=True)
+
+    ci_filenames = {Path(k).name for k in collected["ci_files"]}
+    # The app's own CI should be kept
+    assert "ci.yml" in ci_filenames, "App's own CI workflow should be included"
+    # All agent-ready workflows must be excluded
+    for skipped in ("agentic-ready.yml", "agentic-ready-eval.yml",
+                     "context-drift-detector.yml", "pr-review.yml"):
+        assert skipped not in ci_filenames, f"{skipped} should be filtered out of ci_files"
+
+
+def test_collect_excludes_agent_ready_files_from_file_tree(tmp_path: Path) -> None:
+    """AgentReady generated files and its workflows must not appear in file_tree."""
+    _write(tmp_path / "src" / "app.py", "print('app')\n")
+    _write(tmp_path / "AGENTS.md", "# generated\n")
+    _write(tmp_path / "CLAUDE.md", "# generated\n")
+    _write(tmp_path / "agent-context.json", "{}\n")
+    _write(tmp_path / "mcp.json", "{}\n")
+    _write(tmp_path / "AGENTIC_EVAL.md", "# eval\n")
+    _write(tmp_path / ".github" / "workflows" / "agentic-ready.yml", "name: AR\n")
+    _write(tmp_path / ".agent-ready" / "custom_questions.json", "{}\n")
+
+    collected = analyser.collect(tmp_path, quiet=True)
+    tree = collected["file_tree"]
+
+    assert "src/app.py" in tree
+    for excluded in ("AGENTS.md", "CLAUDE.md", "agent-context.json", "mcp.json",
+                     "AGENTIC_EVAL.md", ".github/workflows/agentic-ready.yml"):
+        assert excluded not in tree, f"{excluded} should be excluded from file_tree"
+
+
+def test_collect_excludes_agent_ready_dirs_from_file_tree(tmp_path: Path) -> None:
+    """The .agent-ready dir should not appear in the file tree."""
+    _write(tmp_path / "src" / "app.py", "print('app')\n")
+    _write(tmp_path / ".agent-ready" / "custom_questions.json", "{}\n")
+    _write(tmp_path / "memory" / "schema.md", "# schema\n")
+    _write(tmp_path / "tools" / "refresh_context.py", "# refresh\n")
+
+    collected = analyser.collect(tmp_path, quiet=True)
+    tree = collected["file_tree"]
+
+    assert "src/app.py" in tree
+    assert not any(".agent-ready" in p for p in tree)
+    assert not any(p.startswith("memory/") for p in tree)
+    assert not any(p.startswith("tools/") for p in tree)
+
     for idx in range(analyser.MAX_SOURCE_FILES + 5):
         _write(tmp_path / "src" / f"file_{idx:03}.py", "x = 1\n")
 
