@@ -495,7 +495,7 @@ Or bypass presets entirely with any LiteLLM model string:
     )
     parser.add_argument(
         "--only",
-        choices=["agents", "tools", "context", "memory"],
+        choices=["agents", "context", "memory"],
         help="Generate only a specific category",
     )
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")

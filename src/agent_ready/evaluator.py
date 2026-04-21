@@ -186,7 +186,7 @@ def _build_question_result(
 ) -> dict[str, Any]:
     baseline_score = baseline_judgment.get("score", 0)
     context_score = context_judgment.get("score", 0)
-    delta = context_score - baseline_score
+    delta = round(context_score - baseline_score, 1)
 
     return {
         "question_id": question["id"],
@@ -787,11 +787,8 @@ def _print_summary(result: dict[str, Any]) -> None:
 def save_eval_report(target: Path, result: dict[str, Any]) -> Path:
     lines = _build_report_lines(result)
     report_path = target / "AGENTIC_EVAL.md"
-    report_path.write_text("\n".join(lines))
+    report_path.write_text("\n".join(lines) + "\n")
     return report_path
 
 
-class EvalFailedError(Exception):
-    """Raised when eval pass rate is below the required fail_level threshold."""
 
-    pass

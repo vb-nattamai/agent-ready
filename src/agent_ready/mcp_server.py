@@ -207,8 +207,8 @@ async def evaluate(
     lines = [
         f"{'✅' if result['passed'] else '❌'} Eval complete: {target_path.name}",
         f"Pass rate: {int(result['pass_rate'] * 100)}%  |  "
-        f"Context score: {result.get('avg_context_score', 0):.1f}/10  |  "
-        f"Baseline: {result.get('avg_baseline_score', 0):.1f}/10",
+        f"Context score: {result.get('context_score', 0):.1f}/10  |  "
+        f"Baseline: {result.get('baseline_score', 0):.1f}/10",
         f"Report saved: {report_path}",
     ]
 
@@ -219,12 +219,13 @@ async def evaluate(
         )
 
     # Per-category summary
-    if "by_category" in result:
+    if "category_breakdown" in result:
         lines.append("\nResults by category:")
-        for cat, cat_result in result["by_category"].items():
-            passed = cat_result.get("passed", 0)
-            total = cat_result.get("total", 0)
-            lines.append(f"  {cat:<14} {passed}/{total}")
+        for cat, cat_result in result["category_breakdown"].items():
+            pass_pct = int(cat_result.get("pass_rate", 0) * 100)
+            q_count = cat_result.get("question_count", 0)
+            ctx_avg = cat_result.get("context_avg", 0)
+            lines.append(f"  {cat:<14} {pass_pct}% pass  {ctx_avg:.1f}/10  ({q_count}q)")
 
     return "\n".join(lines)
 

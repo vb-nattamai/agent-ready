@@ -292,32 +292,57 @@ Use YAML format with inline comments.\
     )
 
 
+# ── .github/copilot-instructions.md ──────────────────────────────────────────
+
+
+def generate_copilot_instructions(model: str, analysis: dict[str, Any]) -> str:
+    return _call(
+        model,
+        f"""\
+Generate a .github/copilot-instructions.md file for this repository.
+
+GitHub Copilot Chat automatically reads this file at the start of every session.
+It is the Copilot equivalent of CLAUDE.md — architecture context auto-loaded into
+every suggestion and chat response.
+
+Start the file with this exact header on line 1:
+{GENERATION_HEADER}
+
+Repository analysis (derived from reading the actual code):
+{_analysis_block(analysis)}
+
+Write a concise, high-signal Copilot instructions file. Include:
+1. One-paragraph project summary (what it does, primary language, key framework)
+2. Build / test / run commands (exact, copy-pasteable)
+3. Module layout — real directory names and what each contains
+4. Restricted paths — files/directories an agent must never modify
+5. Key domain concepts — 3-5 terms specific to this codebase with brief definitions
+6. Top 3 pitfalls — the most likely mistakes a Copilot suggestion would make
+
+Keep it under 400 words. Copilot has a limited context window — every word must earn
+its place. No generic advice. Only facts derived from the actual code.\
+""",
+    )
+
+
 # ── mcp.json ──────────────────────────────────────────────────────────────────
 
 
 def generate_mcp_json(analysis: dict[str, Any]) -> str:
-    lang = analysis.get("primary_language", "").lower()
-    runtime_map = {
-        "python": "python",
-        "typescript": "node",
-        "javascript": "node",
-        "java": "java",
-        "kotlin": "java",
-        "go": "go",
-        "rust": "cargo",
-        "ruby": "ruby",
-    }
-    runtime = runtime_map.get(lang, "python")
+    project_name = analysis.get("project_name", "project").lower().replace(" ", "-")
+    env_vars = {var: f"${{{var}}}" for var in analysis.get("environment_variables", [])[:5]}
 
     mcp = {
         "_comment": GENERATION_HEADER,
         "mcpServers": {
-            f"{analysis.get('project_name', 'project').lower().replace(' ', '-')}-tools": {
-                "command": runtime,
-                "args": ["tools/example_tool" + (".py" if runtime == "python" else "")],
-                "env": {
-                    var: f"${{{var}}}" for var in analysis.get("environment_variables", [])[:5]
-                },
+            f"{project_name}-agent-ready": {
+                "command": "agent-ready-mcp",
+                "args": [],
+                "env": env_vars,
+                "_note": (
+                    "Exposes transform/score/evaluate/review_pr as MCP tools. "
+                    "Install agent-ready to use: pip install agent-ready[ai]"
+                ),
             }
         },
     }
@@ -349,6 +374,7 @@ class LLMGenerator:
         self._agent_context()
         self._agents_md()
         self._claude_md()
+        self._copilot_instructions()
         self._system_prompt()
         self._mcp_json()
         self._memory_schema()
@@ -356,10 +382,14 @@ class LLMGenerator:
 
     def generate_only(self, category: str) -> list[tuple[str, str]]:
         dispatch = {
-            "agents": lambda: (self._agents_md(), self._claude_md(), self._system_prompt()),
+            "agents": lambda: (
+                self._agents_md(),
+                self._claude_md(),
+                self._copilot_instructions(),
+                self._system_prompt(),
+            ),
             "context": self._agent_context,
             "memory": self._memory_schema,
-            "tools": lambda: None,
         }
         fn = dispatch.get(category)
         if fn is None:
@@ -390,6 +420,14 @@ class LLMGenerator:
         if not self.quiet:
             print("  ✍️  Generating CLAUDE.md...")
         self._write("CLAUDE.md", generate_claude_md(self.model, self.analysis))
+
+    def _copilot_instructions(self) -> None:
+        if not self.quiet:
+            print("  ✍️  Generating .github/copilot-instructions.md...")
+        self._write(
+            ".github/copilot-instructions.md",
+            generate_copilot_instructions(self.model, self.analysis),
+        )
 
     def _system_prompt(self) -> None:
         if not self.quiet:

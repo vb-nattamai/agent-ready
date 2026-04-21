@@ -51,7 +51,6 @@ SKIP_AGENT_FILES = {
     "system_prompt.md",
     "mcp.json",
     "AGENTIC_EVAL.md",
-    "AGENTIC_READINESS.md",
 }
 
 SKIP_AGENT_DIRS = {

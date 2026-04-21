@@ -1,15 +1,29 @@
 """Tests for the AgentReady MCP server — helpers and tool logic."""
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from agent_ready.mcp_server import _check_api_key, _format_score, _models, _resolve
+
+
+# ── Mock Context ───────────────────────────────────────────────────────────────
+
+
+class MockContext:
+    """Minimal async stand-in for mcp.server.fastmcp.Context."""
+
+    async def info(self, msg: str) -> None:
+        pass
+
+    async def report_progress(self, current: int, total: int, msg: str = "") -> None:
+        pass
 
 
 # ── _resolve ──────────────────────────────────────────────────────────────────
@@ -168,3 +182,189 @@ def test_review_pr_tool_has_description() -> None:
 
     tools = {t.name: t for t in mcp._tool_manager.list_tools()}
     assert "review" in tools["review_pr"].description.lower()
+
+
+# ── async tool bodies ─────────────────────────────────────────────────────────
+
+
+def test_score_async_tool(tmp_path: Path) -> None:
+    """score tool (async) returns formatted output with score line."""
+    from agent_ready.mcp_server import score as mcp_score
+
+    result = asyncio.run(mcp_score(str(tmp_path)))
+    assert "/ 100" in result
+
+
+def test_score_async_tool_with_scaffolding(tmp_path: Path) -> None:
+    """score tool returns higher score when files exist."""
+    (tmp_path / "AGENTS.md").write_text("# A")
+    (tmp_path / "CLAUDE.md").write_text("# C")
+    from agent_ready.mcp_server import score as mcp_score
+
+    result = asyncio.run(mcp_score(str(tmp_path)))
+    assert "✅ AGENTS.md" in result
+    assert "✅ CLAUDE.md" in result
+
+
+def test_transform_async_tool_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """transform tool calls pipeline and returns score summary."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    fake_generated = [("AGENTS.md", "written"), ("CLAUDE.md", "written")]
+    fake_score = {"score": 80, "max": 100, "rows": [("✅ AGENTS.md", "+10")]}
+
+    with (
+        patch("agent_ready.cli._run_llm_pipeline", return_value=fake_generated),
+        patch("agent_ready.mcp_server._score_fn", fake_score, create=True),
+        patch("agent_ready.cli.score", return_value=fake_score),
+    ):
+        from agent_ready.mcp_server import transform
+
+        ctx = MockContext()
+        result = asyncio.run(transform(ctx, str(tmp_path), provider="anthropic"))
+
+    assert "Transformation complete" in result
+    assert "AGENTS.md" in result
+    assert "80 / 100" in result
+
+
+def test_transform_async_tool_dry_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """transform dry_run changes output header."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    with (
+        patch("agent_ready.cli._run_llm_pipeline", return_value=[("AGENTS.md", "written")]),
+        patch("agent_ready.cli.score", return_value={"score": 10, "max": 100, "rows": []}),
+    ):
+        from agent_ready.mcp_server import transform
+
+        ctx = MockContext()
+        result = asyncio.run(transform(ctx, str(tmp_path), dry_run=True))
+
+    assert "Dry-run" in result
+
+
+def test_transform_async_tool_skipped_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """transform shows skip icon for files with non-written status."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    with (
+        patch(
+            "agent_ready.cli._run_llm_pipeline",
+            return_value=[("AGENTS.md", "skipped")],
+        ),
+        patch("agent_ready.cli.score", return_value={"score": 0, "max": 100, "rows": []}),
+    ):
+        from agent_ready.mcp_server import transform
+
+        ctx = MockContext()
+        result = asyncio.run(transform(ctx, str(tmp_path)))
+
+    assert "⏭️" in result
+
+
+def test_evaluate_async_tool_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """evaluate tool returns pass summary when eval passes."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    fake_result = {
+        "passed": True,
+        "pass_rate": 0.93,
+        "context_score": 9.1,
+        "baseline_score": 2.3,
+        "category_breakdown": {
+            "commands": {"context_avg": 9.1, "pass_rate": 1.0, "question_count": 3}
+        },
+    }
+
+    with (
+        patch("agent_ready.evaluator.run_eval", return_value=fake_result),
+        patch("agent_ready.evaluator.save_eval_report", return_value=tmp_path / "AGENTIC_EVAL.md"),
+    ):
+        from agent_ready.mcp_server import evaluate
+
+        ctx = MockContext()
+        result = asyncio.run(evaluate(ctx, str(tmp_path)))
+
+    assert "✅" in result
+    assert "93%" in result
+    assert "commands" in result
+
+
+def test_evaluate_async_tool_fail_level(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """evaluate tool appends failure message when below fail_level."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    fake_result = {
+        "passed": False,
+        "pass_rate": 0.4,
+        "context_score": 4.0,
+        "baseline_score": 1.0,
+    }
+
+    with (
+        patch("agent_ready.evaluator.run_eval", return_value=fake_result),
+        patch("agent_ready.evaluator.save_eval_report", return_value=tmp_path / "AGENTIC_EVAL.md"),
+    ):
+        from agent_ready.mcp_server import evaluate
+
+        ctx = MockContext()
+        result = asyncio.run(evaluate(ctx, str(tmp_path), fail_level=0.8))
+
+    assert "❌" in result
+    assert "below" in result
+
+
+def test_review_pr_async_tool_posted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """review_pr tool reports posted when reviewer.run returns posted=True."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    fake_result = {"decision": "APPROVE", "body": "Looks good!", "posted": True}
+
+    with patch("agent_ready.reviewer.run", return_value=fake_result):
+        from agent_ready.mcp_server import review_pr
+
+        ctx = MockContext()
+        result = asyncio.run(review_pr(ctx, str(tmp_path), pr_number=42))
+
+    assert "posted to GitHub" in result
+    assert "APPROVE" in result
+    assert "Looks good!" in result
+
+
+def test_review_pr_async_tool_dry_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """review_pr dry_run mode does not claim to post."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    fake_result = {"decision": "REQUEST_CHANGES", "body": "Fix this.", "posted": False}
+
+    with patch("agent_ready.reviewer.run", return_value=fake_result):
+        from agent_ready.mcp_server import review_pr
+
+        ctx = MockContext()
+        result = asyncio.run(review_pr(ctx, str(tmp_path), pr_number=7, dry_run=True))
+
+    assert "Dry-run" in result
+    assert "REQUEST_CHANGES" in result
+
+
+def test_review_pr_async_tool_not_posted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """review_pr shows warning when posted=False and not dry_run."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+
+    fake_result = {"decision": "COMMENT", "body": "See notes.", "posted": False}
+
+    with patch("agent_ready.reviewer.run", return_value=fake_result):
+        from agent_ready.mcp_server import review_pr
+
+        ctx = MockContext()
+        result = asyncio.run(review_pr(ctx, str(tmp_path), pr_number=1, dry_run=False))
+
+    assert "not posted" in result.lower() or "⚠️" in result
+
+
+def test_main_callable() -> None:
+    """main() exists and is callable (doesn't actually start server)."""
+    from agent_ready.mcp_server import main
+
+    assert callable(main)
