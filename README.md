@@ -386,7 +386,7 @@ Triggered manually from the Actions tab. Pushes trigger workflows into any targe
 
 Runs every Monday at 09:00 UTC. Detects if `agent-context.json` has structurally drifted from the current codebase and opens a PR if drift is found. Also installed into target repos by the installer.
 
-### `pr-review-workflow.yml` — AI-powered PR review
+### `pr-review.yml` — AI-powered PR review
 
 Installs into target repos. Runs on every pull request and posts an **APPROVE** or **REQUEST_CHANGES** review grounded in `agent-context.json` — so the reviewer understands your architecture, restricted paths, domain concepts, and known pitfalls before reading a single line of diff.
 
@@ -429,6 +429,26 @@ Bumps version, updates `CHANGELOG.md`, and creates a GitHub Release on every pus
 | `fix:` | patch |
 | `BREAKING CHANGE:` | major |
 | `docs:`, `chore:`, `style:` | none |
+
+### `ci.yml` — Continuous integration
+
+Runs on every push and PR. Steps: lint (`ruff`), format check (`ruff format --check`), tests (`pytest` with coverage). **Coverage gate: ≥ 50%.**
+
+### `codeql.yml` — Static security analysis
+
+Runs CodeQL on every push and PR using the `security-and-quality` query suite. Flags CWE-78 (injection), CWE-312 (clear-text logging), and related issues.
+
+---
+
+## Security Model
+
+All reusable workflows are hardened against GitHub Actions expression injection:
+
+- **No `${{ inputs.* }}` or `${{ github.event.* }}` in `run:` blocks.** Every user-controlled value is assigned to an `env:` variable first and referenced as `$VAR` in shell.
+- **Provider allowlist.** The `provider` input is validated against `^(anthropic|openai|google|groq|mistral|together|ollama)$` using bash `=~` before any shell command is constructed.
+- **Secrets fallback.** All `secrets.INSTALL_TOKEN || github.token` patterns use the safe form: `secrets.INSTALL_TOKEN != '' && secrets.INSTALL_TOKEN || github.token`.
+- **LiteLLM logging suppressed.** `litellm.suppress_debug_info = True` and `litellm.set_verbose = False` are set before every API call to prevent repo context, prompts, and LLM responses from appearing in workflow logs.
+- **Bash arrays for command construction.** CLI commands are built with `CMD=(...)` / `CMD+=(...)` / `"${CMD[@]}"` — never string concatenation — to prevent word-splitting on user-supplied values.
 
 ---
 
@@ -509,7 +529,23 @@ Contributions are very welcome. AgentReady is an early-stage open-source project
 1. Fork this repository
 2. Create a feature branch: `git checkout -b feat/my-improvement`
 3. Commit with conventional commits: `feat:`, `fix:`, `docs:`
-4. Push and open a Pull Request
+4. Run the full pre-push checklist before opening a PR:
+
+```bash
+git pull --rebase \
+  && ruff format src tests \
+  && ruff check src tests \
+  && python -m pytest tests/ -q --cov=src/agent_ready --cov-fail-under=50 \
+  && git push
+```
+
+**CI gates (all must pass):**
+- `ruff format --check` — formatting
+- `ruff check` — linting
+- `pytest --cov-fail-under=50` — all tests pass, coverage ≥ 50%
+- CodeQL — no new security findings
+
+5. Push and open a Pull Request
 
 Please open an issue first for significant changes so we can discuss the approach before you invest time building it.
 
