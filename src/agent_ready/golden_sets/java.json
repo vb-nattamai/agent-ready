@@ -1,0 +1,81 @@
+[
+  {
+    "id": "java_cmd_001",
+    "version": "2.0",
+    "category": "commands",
+    "difficulty": "easy",
+    "prompt": "What build tool does this project use (Maven or Gradle) and what command builds and tests the project?",
+    "pass_threshold": 8.0,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Build tool from pom.xml or build.gradle presence",
+      "static_sources": [
+        {"file": "pom.xml", "exists": "Maven: mvn clean install"},
+        {"file": "build.gradle", "exists": "Gradle: ./gradlew build"},
+        {"file": "build.gradle.kts", "exists": "Gradle (Kotlin DSL): ./gradlew build"},
+        {"file": "mvnw", "exists": "uses Maven wrapper: ./mvnw"},
+        {"file": "gradlew", "exists": "uses Gradle wrapper: ./gradlew"}
+      ],
+      "llm_prompt": "What build tool is used (Maven/Gradle)? Is there a wrapper script (mvnw/gradlew)? What is the full build and test command?"
+    },
+    "evaluation_criteria": "Must correctly identify Maven vs Gradle. Must use wrapper if present (./mvnw vs mvn, ./gradlew vs gradle). Wrong build tool scores 0-2."
+  },
+  {
+    "id": "java_cmd_002",
+    "version": "2.0",
+    "category": "commands",
+    "difficulty": "medium",
+    "prompt": "What Java version is required for this project?",
+    "pass_threshold": 7.5,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Java version from pom.xml, build.gradle, or Dockerfile",
+      "static_sources": [
+        {"file": "pom.xml", "grep": "<java.version>|<source>|<target>"},
+        {"file": "build.gradle", "grep": "sourceCompatibility|javaVersion"},
+        {"file": ".java-version", "read": true},
+        {"file": "Dockerfile", "grep": "FROM.*jdk|FROM.*java"},
+        {"file": ".github/workflows/ci.yml", "grep": "java-version"}
+      ],
+      "llm_prompt": "What Java version is required? Check pom.xml java.version property, build.gradle sourceCompatibility, Dockerfile FROM java/jdk line, or CI java-version."
+    },
+    "evaluation_criteria": "Must state a specific Java version (e.g. 17, 21). Must mention where it's specified. Generic 'Java 8+' without specifics scores ≤5."
+  },
+  {
+    "id": "java_arch_001",
+    "version": "2.0",
+    "category": "architecture",
+    "difficulty": "medium",
+    "prompt": "What is the main application class or entry point? What framework is used (Spring Boot, Quarkus, Micronaut, plain Java)?",
+    "pass_threshold": 7.5,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Main class from pom.xml or Spring Boot annotations",
+      "static_sources": [
+        {"file": "pom.xml", "grep": "<mainClass>|spring-boot"},
+        {"file": "build.gradle", "grep": "mainClassName|SpringBoot"}
+      ],
+      "llm_prompt": "What is the main application class? What Java framework is used (Spring Boot, Quarkus, Micronaut, plain Java, Jakarta EE)? Look at pom.xml dependencies and @SpringBootApplication or similar annotations."
+    },
+    "evaluation_criteria": "Must correctly identify the framework. Must name the main class if findable. Spring Boot with wrong main class scores ≤6. Correct framework AND correct main class scores ≥9."
+  },
+  {
+    "id": "java_saf_001",
+    "version": "2.0",
+    "category": "safety",
+    "difficulty": "easy",
+    "prompt": "Which directories contain generated code or build output that must never be manually edited or committed?",
+    "pass_threshold": 7.5,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Generated/build directories from .gitignore and build tool conventions",
+      "static_sources": [
+        {"file": ".gitignore", "grep": "target/|build/|generated/"},
+        {"file": "pom.xml", "exists": "target/ is Maven build output"},
+        {"file": "build.gradle", "exists": "build/ is Gradle build output"}
+      ],
+      "llm_prompt": "Which directories contain generated code or build output that should never be manually edited? (e.g. target/, build/, generated-sources/). Base this on the build tool and .gitignore."
+    },
+    "evaluation_criteria": "Must name the correct build output directory (target/ for Maven, build/ for Gradle). Must say they should not be committed. Correct answer scores ≥9."
+  }
+]

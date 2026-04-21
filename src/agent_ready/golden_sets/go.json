@@ -1,0 +1,71 @@
+[
+  {
+    "id": "go_cmd_001",
+    "version": "2.0",
+    "category": "commands",
+    "difficulty": "easy",
+    "prompt": "What Go version does this module require and what command builds and tests the project?",
+    "pass_threshold": 8.0,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Go version and commands from go.mod and Makefile",
+      "static_sources": [
+        {"file": "go.mod", "grep": "^go "},
+        {"file": "Makefile", "pattern": "^build:|^test:"}
+      ],
+      "llm_prompt": "What Go version is specified in go.mod? What commands build and test this module (go build, go test ./..., make build)? Return the exact commands."
+    },
+    "evaluation_criteria": "Must state the Go version from go.mod. Must give correct build and test commands. Wrong version or commands score ≤4."
+  },
+  {
+    "id": "go_cmd_002",
+    "version": "2.0",
+    "category": "commands",
+    "difficulty": "medium",
+    "prompt": "What is the module path and where is the main package located?",
+    "pass_threshold": 7.5,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Module path from go.mod, main package from cmd/ or main.go",
+      "static_sources": [
+        {"file": "go.mod", "grep": "^module "},
+        {"glob": "cmd/*/main.go"},
+        {"glob": "main.go"}
+      ],
+      "llm_prompt": "What is the Go module path (from go.mod module line)? Where is the main package located (cmd/xxx/main.go or main.go)? Return the module path and main package path."
+    },
+    "evaluation_criteria": "Must state the correct module path from go.mod. Must correctly locate the main package. Guessing module path scores 0-2."
+  },
+  {
+    "id": "go_arch_001",
+    "version": "2.0",
+    "category": "architecture",
+    "difficulty": "medium",
+    "prompt": "How is the Go codebase structured? Does it follow standard Go project layout (cmd/, pkg/, internal/)? What is in each directory?",
+    "pass_threshold": 7.0,
+    "ground_truth_extraction": {
+      "method": "llm",
+      "llm_prompt": "How is this Go codebase structured? Which of these standard directories exist: cmd/, pkg/, internal/, api/? What does each contain? Be specific to what actually exists in this repo."
+    },
+    "evaluation_criteria": "Must describe actual directory structure. Must not invent directories that don't exist. Correct structure with accurate descriptions scores ≥8."
+  },
+  {
+    "id": "go_saf_001",
+    "version": "2.0",
+    "category": "safety",
+    "difficulty": "medium",
+    "prompt": "Are there any generated files in this Go project that must never be manually edited? How were they generated?",
+    "pass_threshold": 7.0,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Generated Go files from go generate comments or *.pb.go presence",
+      "static_sources": [
+        {"glob": "*.pb.go"},
+        {"glob": "**/*.pb.go"},
+        {"file": "Makefile", "grep": "go generate|protoc|mockgen"}
+      ],
+      "llm_prompt": "Are there generated Go files in this repo (e.g. .pb.go from protobuf, mock files from mockgen, files with 'DO NOT EDIT' headers)? What generated them and how should they be regenerated?"
+    },
+    "evaluation_criteria": "Must correctly identify whether generated files exist. If they do, must name them and the generation tool. False positives (claiming files exist when they don't) score 0-2."
+  }
+]

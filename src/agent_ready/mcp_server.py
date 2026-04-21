@@ -194,8 +194,9 @@ async def evaluate(
 
     result = _eval.run_eval(
         target=target_path,
-        eval_model=models["evaluation"],
-        judge_model=models["evaluation"],
+        eval_model=models["analysis"],      # strong model for context responses
+        judge_model=models["analysis"],     # strong model for judging
+        baseline_model=models["evaluation"], # weak model for no-context baseline
         fail_level=0.0,  # we handle fail_level ourselves below
         quiet=True,
     )

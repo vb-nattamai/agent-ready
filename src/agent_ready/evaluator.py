@@ -1,15 +1,21 @@
 """
-AgentReady — Evaluator (Phase 5)
+AgentReady — Evaluator v2
 
-Measures whether the generated context files actually improve AI responses.
-Uses LiteLLM — works with Anthropic, OpenAI, and Google providers.
+Measures whether generated context files improve AI responses using a golden question set.
 
-Question coverage (15 total):
-  commands     × 3  — test, build, install
-  safety       × 2  — restricted paths, secrets
-  domain       × 2  — purpose, concepts
-  architecture × 3  — entry point, language/framework, module layout
-  pitfalls     × 5  — one per pitfall type found in the codebase
+v2 changes from v1:
+  - Ground truth extracted from RAW SOURCE CODE (not from generated context files)
+  - Baseline uses a weaker model (haiku) with zero context — realistic floor
+  - Questions loaded from versioned golden sets, not LLM-generated per-run
+  - Context window includes ALL generated files (AGENTS.md, CLAUDE.md, system_prompt.md,
+    copilot-instructions.md, memory/schema.md) not just agent-context.json
+
+Golden set coverage (varies by language):
+  base (all repos):    13 questions — commands×3, safety×3, architecture×3, domain×2, adversarial×2
+  python overlay:       6 questions — py-specific commands, architecture, safety, adversarial
+  javascript overlay:   6 questions — node-specific commands, architecture, safety, adversarial
+  java overlay:         4 questions — maven/gradle, java version, main class, build output
+  go overlay:           4 questions — go.mod, module path, layout, generated files
 """
 
 from __future__ import annotations
@@ -99,6 +105,62 @@ QUESTION_GEN_SCHEMA = """
   {"id": "pitfall_005", "category": "pitfalls",      "prompt": "What is the most dangerous operation an AI agent could perform in this codebase?", "ground_truth": "<most critical pitfall or forbidden operation>",          "evaluation_criteria": "Must name a specific forbidden operation or dangerous pattern in this codebase"}
 ]
 """
+
+# ── Golden set loader ─────────────────────────────────────────────────────────
+
+_GOLDEN_SETS_DIR = Path(__file__).parent / "golden_sets"
+
+_LANGUAGE_MAP: dict[str, str] = {
+    "python": "python",
+    "javascript": "javascript",
+    "typescript": "javascript",
+    "node": "javascript",
+    "nodejs": "javascript",
+    "java": "java",
+    "kotlin": "java",
+    "go": "go",
+    "golang": "go",
+}
+
+
+def load_golden_questions(language: str, extra_questions: list[dict] | None = None) -> list[dict]:
+    """Load the golden question set for a given language.
+
+    Loads base.json (universal) then overlays language-specific questions.
+    Optionally appends repo-specific custom questions from the caller.
+
+    Args:
+        language: Primary language string from agent-context.json (case-insensitive).
+        extra_questions: Optional list of additional questions (e.g. from
+                         .agent-ready/custom_questions.json in the target repo).
+    """
+    base_path = _GOLDEN_SETS_DIR / "base.json"
+    questions: list[dict] = json.loads(base_path.read_text())
+
+    lang_key = _LANGUAGE_MAP.get(language.lower().strip())
+    if lang_key:
+        overlay_path = _GOLDEN_SETS_DIR / f"{lang_key}.json"
+        if overlay_path.exists():
+            questions = questions + json.loads(overlay_path.read_text())
+
+    if extra_questions:
+        questions = questions + extra_questions
+
+    return questions
+
+
+def _load_custom_questions(target: Path) -> list[dict]:
+    """Load repo-specific custom golden questions from .agent-ready/custom_questions.json."""
+    custom_path = target / ".agent-ready" / "custom_questions.json"
+    if custom_path.exists():
+        try:
+            return json.loads(custom_path.read_text())
+        except Exception:
+            pass
+    return []
+
+
+# ── Judge ─────────────────────────────────────────────────────────────────────
 
 JUDGE_SYSTEM = """\
 You are evaluating AI assistant responses for accuracy and helpfulness.
@@ -276,6 +338,9 @@ def _build_eval_result(
     results: list[dict[str, Any]],
     fail_level: float,
     generated_at: str | None = None,
+    eval_model: str = "",
+    baseline_model: str = "",
+    language: str = "",
 ) -> dict[str, Any]:
     summary = _aggregate_results(results)
     pass_rate = summary["pass_rate"]
@@ -285,6 +350,11 @@ def _build_eval_result(
         **summary,
         "passed": pass_rate >= fail_level if fail_level > 0 else True,
         "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
+        "eval_model": eval_model,
+        "baseline_model": baseline_model,
+        "language": language,
+        "eval_version": "2.0",
+        "ground_truth_source": "raw_source_code",
     }
 
 
@@ -322,12 +392,32 @@ def _build_report_lines(result: dict[str, Any]) -> list[str]:
     generated_at = result.get("generated_at", "")
     generated_day = generated_at[:10] if generated_at else "unknown"
     verdict, verdict_detail = _resolve_report_verdict(result["score_delta"], result["pass_rate"])
+    language = result.get("language", "") or "base"
+    eval_model = result.get("eval_model", "")
+    baseline_model = result.get("baseline_model", "")
+    eval_version = result.get("eval_version", "2.0")
+    gt_source = result.get("ground_truth_source", "raw_source_code")
 
     lines: list[str] = [
-        "# AgentReady — Evaluation Report",
+        "# AgentReady — Evaluation Report v2",
         "",
         f"> Generated: {generated_day}  ",
         f"> Questions: {total}  |  Passed: {passed_count}/{total}  |  Hallucinations: {halluc_pct}%",
+        "",
+        "---",
+        "",
+        "## Methodology",
+        "",
+        "| Parameter | Value |",
+        "|-----------|-------|",
+        f"| Ground truth source | {gt_source.replace('_', ' ').title()} |",
+        f"| Baseline model | `{baseline_model}` (no context) |",
+        f"| Context model | `{eval_model}` (all generated context files) |",
+        f"| Judge | 3-panel majority vote (factual · semantic · safety) |",
+        f"| Golden set version | v{eval_version} ({language}) |",
+        "",
+        "> Ground truth is extracted from raw source code — **not** from the generated context files.",
+        "> This breaks the circularity of v1 eval. The baseline model has no access to any context.",
         "",
         "---",
         "",
@@ -341,7 +431,7 @@ def _build_report_lines(result: dict[str, Any]) -> list[str]:
         "",
         "## Scores at a Glance",
         "",
-        "| | Without context | With context | Delta |",
+        f"| Category | {baseline_model or 'Baseline'} (no ctx) | {eval_model or 'Context model'} (with ctx) | Delta |",
         "|---|---|---|---|",
         f"| **Overall** | {result['baseline_score']}/10 | **{result['context_score']}/10** | {delta_sign}{delta} pts |",
     ]
@@ -444,43 +534,6 @@ def _build_report_lines(result: dict[str, Any]) -> list[str]:
     return lines
 
 
-def generate_questions(
-    eval_model: str,
-    analysis: dict[str, Any],
-    quiet: bool = False,
-) -> list[dict[str, Any]]:
-    if not quiet:
-        print("  📝 Generating 15 eval questions from agent-context.json...")
-
-    prompt = f"""Generate evaluation questions for this repository's AI agent context files.
-Use the ACTUAL values from agent-context.json as ground truth — real commands, real paths, real pitfalls.
-
-Return a JSON array matching this schema exactly:
-{QUESTION_GEN_SCHEMA}
-
-Repository context:
-{json.dumps(analysis, indent=2)}
-
-Rules:
-- Generate exactly 15 questions following the schema above (one per id shown)
-- For pitfall questions (pitfall_001 through pitfall_005): use the actual potential_pitfalls
-  from the context. If fewer than 5 pitfalls exist, adapt the questions to cover the ones that do exist.
-- Ground truth must always contain actual values from the context — never placeholders
-- evaluation_criteria must be specific and testable"""
-
-    raw = _api_call_with_retry(
-        model=eval_model,
-        messages=[
-            {"role": "system", "content": QUESTION_GEN_SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=4096,
-    )
-
-    questions = json.loads(_strip_markdown_fences(raw))
-    if not quiet:
-        print(f"  ✓ Generated {len(questions)} evaluation questions")
-    return questions
 
 
 # ── Judge ─────────────────────────────────────────────────────────────────────
@@ -622,12 +675,14 @@ def _ask(eval_model: str, prompt: str, system: str | None = None) -> str:
 
 
 def _build_context_system(target: Path) -> str | None:
+    """Build a context system prompt from ALL generated agent context files."""
     parts: list[str] = [
         "You are an AI agent working on the repository described below.",
-        "Use the provided context to give accurate, specific answers.",
+        "Use the provided context files to give accurate, specific answers.",
         "",
     ]
 
+    # agent-context.json — the primary structured context
     ctx_path = target / "agent-context.json"
     if ctx_path.exists():
         try:
@@ -638,11 +693,19 @@ def _build_context_system(target: Path) -> str | None:
         except Exception:
             pass
 
-    for fname in ["CLAUDE.md", "AGENTS.md"]:
+    # All other generated context files (cap each to avoid token overflow)
+    context_files = [
+        ("AGENTS.md", 3000),
+        ("CLAUDE.md", 3000),
+        ("system_prompt.md", 2000),
+        ("memory/schema.md", 1500),
+        (".github/copilot-instructions.md", 1500),
+    ]
+    for fname, max_chars in context_files:
         fpath = target / fname
         if fpath.exists():
             parts.append(f"## {fname}")
-            parts.append(fpath.read_text(errors="ignore")[:3000])
+            parts.append(fpath.read_text(errors="ignore")[:max_chars])
             parts.append("")
 
     return "\n".join(parts) if len(parts) > 4 else None
@@ -650,18 +713,63 @@ def _build_context_system(target: Path) -> str | None:
 
 # ── Main eval runner ──────────────────────────────────────────────────────────
 
+# Default baseline model per provider prefix (haiku-class models)
+_DEFAULT_BASELINE_MODELS: dict[str, str] = {
+    "anthropic": "claude-haiku-4-5",
+    "openai": "gpt-4.1-mini",
+    "gpt": "gpt-4.1-mini",
+    "google": "gemini-1.5-flash-8b",
+    "gemini": "gemini-1.5-flash-8b",
+    "groq": "llama3-8b-8192",
+    "mistral": "mistral-small-latest",
+}
+
+
+def _resolve_baseline_model(eval_model: str, baseline_model: str | None) -> str:
+    """Infer a baseline model from the eval model's provider prefix if not specified."""
+    if baseline_model:
+        return baseline_model
+    for prefix, fallback in _DEFAULT_BASELINE_MODELS.items():
+        if prefix in eval_model.lower():
+            return fallback
+    return "claude-haiku-4-5"  # safe default
+
 
 def run_eval(
     target: Path,
     eval_model: str,
     judge_model: str,
+    baseline_model: str | None = None,
     questions: list[dict[str, Any]] | None = None,
     fail_level: float = 0.0,
     quiet: bool = False,
 ) -> dict[str, Any]:
+    """Run the v2 golden-set evaluation.
+
+    Args:
+        target:         Path to the target repo (must have agent-context.json).
+        eval_model:     Model for context responses (e.g. claude-opus-4-6).
+        judge_model:    Model for judging (3-panel; usually same as eval_model).
+        baseline_model: Weak model for no-context baseline (defaults to haiku).
+                        Set explicitly to override per-provider default.
+        questions:      Override question list (defaults to golden set by language).
+        fail_level:     Pass rate threshold for fail exit (0.0 = never fail).
+        quiet:          Suppress verbose output.
+    """
     if not quiet:
         print("\n🧪 Running evaluation...")
         print("─" * 50)
+
+    ctx_path = target / "agent-context.json"
+    if not ctx_path.exists():
+        raise ValueError("agent-context.json not found. Run the transformer first.")
+
+    analysis = json.loads(ctx_path.read_text())
+    flat = _flatten_analysis_context(analysis)
+    # primary_language may be at top level OR in flat (static/dynamic sections)
+    language = analysis.get("primary_language", "") or flat.get("primary_language", "")
+
+    effective_baseline = _resolve_baseline_model(eval_model, baseline_model)
 
     context_system = _build_context_system(target)
     if not context_system:
@@ -669,15 +777,25 @@ def run_eval(
             "No context files found. Run the transformer first: agent-ready --target <repo>"
         )
 
-    ctx_path = target / "agent-context.json"
-    if not ctx_path.exists():
-        raise ValueError("agent-context.json not found in target repo.")
-
-    analysis = json.loads(ctx_path.read_text())
-    flat = _flatten_analysis_context(analysis)
-
+    # Load golden questions (base + language overlay + optional repo custom)
     if not questions:
-        questions = generate_questions(eval_model, flat, quiet=quiet)
+        custom = _load_custom_questions(target)
+        questions = load_golden_questions(language, extra_questions=custom or None)
+        if not quiet:
+            print(f"  📋 Golden set: {len(questions)} questions [{language or 'base'}]")
+
+    # Extract ground truth from RAW source code (not from context files)
+    from agent_ready import analyser as _analyser
+    from agent_ready import ground_truth as _gt
+
+    raw_repo = _analyser.collect(target, quiet=True)
+    source_files: dict[str, str] = raw_repo.get("source_files", {})
+    ground_truth_map = _gt.extract_all(
+        target, questions, source_files, effective_baseline, quiet=quiet
+    )
+    # Inject extracted ground truth into each question
+    for q in questions:
+        q["ground_truth"] = ground_truth_map.get(q["id"], "Not determinable from source.")
 
     results: list[dict[str, Any]] = []
 
@@ -686,11 +804,13 @@ def run_eval(
             print(f"  [{i + 1}/{len(questions)}] {q['category']}: {q['prompt'][:60]}...")
 
         time.sleep(1)
-        baseline_response = _ask(eval_model, q["prompt"])
+        # Baseline: weak model, NO context at all
+        baseline_response = _ask(effective_baseline, q["prompt"])
         time.sleep(1)
+        # Context response: strong model, ALL context files
         context_response = _ask(eval_model, q["prompt"], system=context_system)
         time.sleep(1)
-        # Baseline: single judge — reference point only (cheaper/faster).
+        # Baseline: single judge (cheaper reference point)
         baseline_judgment = _judge_response(judge_model, q, baseline_response)
         time.sleep(1)
         # Context: full three-judge panel with majority vote to reduce hallucination.
@@ -719,6 +839,9 @@ def run_eval(
         questions=questions,
         results=results,
         fail_level=fail_level,
+        eval_model=eval_model,
+        baseline_model=effective_baseline,
+        language=language,
     )
 
     if not quiet:

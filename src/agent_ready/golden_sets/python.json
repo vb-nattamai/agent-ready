@@ -1,0 +1,124 @@
+[
+  {
+    "id": "py_cmd_001",
+    "version": "2.0",
+    "category": "commands",
+    "difficulty": "medium",
+    "prompt": "What Python version does this project require? How is this enforced?",
+    "pass_threshold": 7.5,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Python version from .python-version, pyproject.toml, or setup.py",
+      "static_sources": [
+        {"file": ".python-version", "read": true},
+        {"file": "pyproject.toml", "toml_path": "tool.poetry.dependencies.python"},
+        {"file": "pyproject.toml", "toml_path": "project.requires-python"},
+        {"file": ".github/workflows/ci.yml", "grep": "python-version"},
+        {"file": "Dockerfile", "grep": "FROM python"},
+        {"file": "runtime.txt", "read": true}
+      ],
+      "llm_prompt": "What Python version is required by this project? Look at .python-version, pyproject.toml requires-python, Dockerfile FROM python line, runtime.txt, or CI workflow python-version. Return the version specifier."
+    },
+    "evaluation_criteria": "Must state the specific Python version (e.g. '3.11', '>=3.10'). Must also say how it's enforced (.python-version, pyproject.toml, etc.). Generic 'Python 3' scores ≤4."
+  },
+  {
+    "id": "py_cmd_002",
+    "version": "2.0",
+    "category": "commands",
+    "difficulty": "medium",
+    "prompt": "What testing framework is used and how is it configured? Include any relevant flags or markers.",
+    "pass_threshold": 7.5,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Test framework and config from pytest.ini, pyproject.toml, tox.ini",
+      "static_sources": [
+        {"file": "pytest.ini", "read": true},
+        {"file": "pyproject.toml", "toml_path": "tool.pytest.ini_options"},
+        {"file": "setup.cfg", "grep": "[tool:pytest]"},
+        {"file": "tox.ini", "read": true}
+      ],
+      "llm_prompt": "What testing framework is used (pytest/unittest/nose)? What configuration exists (pytest.ini, pyproject.toml [tool.pytest])? What test markers or flags are configured? Return the key details."
+    },
+    "evaluation_criteria": "Must correctly name the testing framework. Must mention key configuration options specific to this project. 'pytest' alone scores ≤5; pytest with config details scores ≥8."
+  },
+  {
+    "id": "py_arch_001",
+    "version": "2.0",
+    "category": "architecture",
+    "difficulty": "medium",
+    "prompt": "How is this Python project packaged and distributed? Is it an installable package or just scripts?",
+    "pass_threshold": 6.5,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Packaging from pyproject.toml or setup.py",
+      "static_sources": [
+        {"file": "pyproject.toml", "read": true},
+        {"file": "setup.py", "read": true},
+        {"file": "setup.cfg", "read": true}
+      ],
+      "llm_prompt": "How is this Python project packaged? Does it have a pyproject.toml with [project] or [tool.poetry]? A setup.py? Is it an installable package with entry points, or just scripts? Return the key facts."
+    },
+    "evaluation_criteria": "Must correctly describe packaging (setuptools/poetry/hatch/flit or bare scripts). Must mention entry points if they exist. Wrong packaging tool scores ≤4."
+  },
+  {
+    "id": "py_arch_002",
+    "version": "2.0",
+    "category": "architecture",
+    "difficulty": "easy",
+    "prompt": "What linting, formatting, and type checking tools are configured for this project?",
+    "pass_threshold": 7.0,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Code quality tools from config files",
+      "static_sources": [
+        {"file": ".flake8", "exists": "flake8"},
+        {"file": "pyproject.toml", "toml_path": "tool.ruff"},
+        {"file": "pyproject.toml", "toml_path": "tool.mypy"},
+        {"file": ".mypy.ini", "exists": "mypy"},
+        {"file": ".pre-commit-config.yaml", "read": true},
+        {"file": "setup.cfg", "grep": "[flake8]"}
+      ],
+      "llm_prompt": "What linting (flake8/ruff/pylint), formatting (black/ruff format), and type checking (mypy/pyright) tools are configured in this project? List only tools that have actual config files present."
+    },
+    "evaluation_criteria": "Must list only tools that actually have config in this repo. Inventing tools scores negatively. Correctly naming configured tools with their config location scores ≥8."
+  },
+  {
+    "id": "py_saf_001",
+    "version": "2.0",
+    "category": "safety",
+    "difficulty": "medium",
+    "prompt": "How should an agent set up a virtual environment for this project? What is the correct procedure and tool?",
+    "pass_threshold": 7.0,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Venv setup from README, Makefile, or pyproject.toml",
+      "static_sources": [
+        {"file": "Makefile", "pattern": "venv|virtualenv|conda"},
+        {"file": "README.md", "grep": "venv|virtualenv|conda|poetry install|uv"}
+      ],
+      "llm_prompt": "How should a developer set up a virtual environment for this project? Look at the README, Makefile, and any venv/conda/poetry/uv configuration. Return the exact setup steps."
+    },
+    "evaluation_criteria": "Must name the correct venv tool for this project (venv/virtualenv/conda/poetry/uv). Must give the right setup command. Wrong tool scores ≤4."
+  },
+  {
+    "id": "py_adv_001",
+    "version": "2.0",
+    "category": "adversarial",
+    "difficulty": "hard",
+    "prompt": "An agent wants to add a new Python dependency to this project. What is the exact procedure? What should it absolutely NOT do?",
+    "pass_threshold": 7.5,
+    "ground_truth_extraction": {
+      "method": "static_then_llm",
+      "description": "Dependency management procedure from pyproject.toml, requirements.txt, README",
+      "static_sources": [
+        {"file": "pyproject.toml", "read": true},
+        {"file": "requirements.txt", "exists": "edit requirements.txt"},
+        {"file": "requirements-dev.txt", "exists": "has dev requirements"},
+        {"file": "poetry.lock", "exists": "use poetry add"},
+        {"file": "uv.lock", "exists": "use uv add"}
+      ],
+      "llm_prompt": "What is the correct way to add a new Python dependency to this project? What tool manages dependencies (pip/poetry/uv/conda)? What should an agent never do (e.g. manually editing pyproject.toml without running the package manager)?"
+    },
+    "evaluation_criteria": "Must identify the correct dependency manager. Must warn against wrong procedures (e.g. editing lockfiles directly). Must mention which file gets modified. Missing the specific tool scores ≤5."
+  }
+]
