@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.3] — 2026-04-21
+
+
+### Fixed
+
+- ruff lint and format violations (f-string placeholder, duplicate dict key)
+
+### Changed
+
+- docs: update README and agent files to reflect v2 eval, 12 generated files, MCP server
+
+---
 ## [2.6.2] — 2026-04-21
 
 
