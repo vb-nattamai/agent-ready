@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] — 2026-04-21
+
+### Added
+
+- (templates): production-ready template and generator improvements
+- (eval): golden-set v2 — break circular ground truth, haiku baseline
+- (mcp): add real MCP server with transform, score, evaluate, review_pr tools
+- (eval): add standalone eval workflow for target repos
+
+### Fixed
+
+- float formatting and dead code cleanup
+- (analyser): eliminate hallucination root cause — filter AgentReady tooling from LLM input
+- (evaluator): _load_custom_questions handles wrapper format and disabled stubs
+- (generator): restore generate_mcp_json accidentally deleted in template edit
+- (score): brace-glob tip bug, add tools/refresh_context.py, reach 100/100
+- (pr-template): remove non-existent files from PR body; add agent scaffolding
+- (security): expression injection in dev utility workflows
+- (eval): wire _multi_judge_response into run_eval — panel was dead code
+- (ci): coverage >50%, CodeQL CWE-312, remaining ${{ }} in run: block
+- (lint): remove unused call import in test_reviewer.py
+- (security): bash arrays for cmd building, regex allowlist, missing run: label
+- (security): harden workflows against injection and suppress litellm logging
+
+### Changed
+
+- docs: fix workflow names, add security model, ci/codeql sections, contributing checklist
+- style: ruff format evaluator.py
+- chore: resolve merge conflicts with main (2.5.2)
+
+---
 ## [2.6.0] — 2026-04-17
 
 ### Added
