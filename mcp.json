@@ -4,7 +4,7 @@
     "agent-ready-tools": {
       "command": "python",
       "args": [
-        "tools/example_tool.py"
+        "tools/refresh_context.py"
       ],
       "env": {
         "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",

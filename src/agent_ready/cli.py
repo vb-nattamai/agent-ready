@@ -622,8 +622,19 @@ Or bypass presets entirely with any LiteLLM model string:
         if readiness["score"] < 100:
             print()
             print("  💡 To improve your score:")
-            if not any(target.glob("**/openapi.{yaml,json,yml}")):
+            has_openapi = (
+                any(target.glob("**/openapi.yaml"))
+                or any(target.glob("**/openapi.yml"))
+                or any(target.glob("**/openapi.json"))
+                or any(target.glob("**/swagger.yaml"))
+                or any(target.glob("**/swagger.json"))
+            )
+            if not has_openapi:
                 print("     - Add an OpenAPI spec (openapi.yaml)")
+            if not (target / "tools").exists() or not any((target / "tools").glob("*")):
+                print(
+                    "     - Add at least one tool script in tools/ (e.g. tools/refresh_context.py)"
+                )
         print("──────────────────────────────────────────────")
         print()
 
