@@ -83,13 +83,17 @@ def build_agent_context(
     analysis: dict[str, Any],
     existing_static: dict[str, Any] | None = None,
 ) -> str:
+    # Use "TODO: add tests" when analyser found no test command, so agents don't fabricate test setup
+    raw_test_cmd = analysis.get("test_command", "")
+    test_command = raw_test_cmd if raw_test_cmd and raw_test_cmd != "TODO: verify" else "TODO: no test suite detected — add tests first"
+
     static = existing_static or {
         "project_name": analysis.get("project_name", ""),
         "description": analysis.get("description", ""),
         "primary_language": analysis.get("primary_language", ""),
         "frameworks": analysis.get("frameworks", []),
         "entry_point": analysis.get("entry_point", ""),
-        "test_command": analysis.get("test_command", ""),
+        "test_command": test_command,
         "restricted_write_paths": analysis.get("restricted_write_paths", []),
         "environment_variables": analysis.get("environment_variables", []),
         "domain_concepts": [

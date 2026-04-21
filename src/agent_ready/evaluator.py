@@ -577,7 +577,7 @@ Return JSON:
   "score": <0-10>,
   "correct": <true if score >= 7, false otherwise>,
   "reasoning": "<one sentence explaining the score>",
-  "hallucinated": <true if response contains invented file paths or class names not in ground truth>,
+  "hallucinated": <true ONLY if the response invents a specific file path, class name, function, or command that does NOT exist in the codebase — reasonable inferences and setup recommendations are NOT hallucinations>,
   "key_missing": "<what specific detail was missing or wrong, empty string if correct>"
 }}"""
 
@@ -653,7 +653,7 @@ Return JSON:
   "score": <0-10>,
   "correct": <true if score >= 7, false otherwise>,
   "reasoning": "<one sentence explaining the score>",
-  "hallucinated": <true if response contains invented file paths or class names not in ground truth>,
+  "hallucinated": <true ONLY if the response invents a specific file path, class name, function, or command that does NOT exist in the codebase — reasonable inferences and setup recommendations are NOT hallucinations>,
   "key_missing": "<what specific detail was missing or wrong, empty string if correct>"
 }}"""
 
@@ -808,7 +808,17 @@ def run_eval(
     from agent_ready import ground_truth as _gt
 
     raw_repo = _analyser.collect(target, quiet=True)
-    source_files: dict[str, str] = raw_repo.get("source_files", {})
+    # Merge ALL non-generated files so haiku has full project context:
+    # source_files = .py/.ts/.js etc, config_files = requirements.txt/Makefile/pyproject.toml,
+    # ci_files = .github/workflows/*.yml (app CI, not agent-ready workflows).
+    # Without this, haiku only sees app.py and calls everything "not determinable from source."
+    source_files: dict[str, str] = {
+        **raw_repo.get("source_files", {}),
+        **raw_repo.get("config_files", {}),
+        **raw_repo.get("ci_files", {}),
+    }
+    if raw_repo.get("readme"):
+        source_files["README.md"] = raw_repo["readme"]
     ground_truth_map = _gt.extract_all(
         target, questions, source_files, effective_baseline, quiet=quiet
     )
