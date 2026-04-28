@@ -1,4 +1,3 @@
-```markdown
 ---
 name: run-ci
 description: Trigger or simulate the CI pipeline.
@@ -6,34 +5,31 @@ description: Trigger or simulate the CI pipeline.
 
 ## When to use this skill
 
-Use this skill when you need to locally reproduce or verify the full CI pipeline before pushing changes or diagnosing a CI failure.
+Use this skill when you need to validate the project locally by running the full install, build, and test sequence as it would execute in CI.
 
 ## Steps
 
-1. Install all dependencies: `pip install -r requirements.txt -r requirements-dev.txt`
-2. Run the test suite with coverage: `pytest -q --cov=app`
-3. Confirm success by checking that all tests pass with no errors and a coverage report is printed to stdout.
+1. Install dependencies: `pip install -r requirements.txt`
+2. Run the test suite: `pytest`
+3. Confirm all tests pass by reviewing the final pytest summary line (e.g., `X passed in Xs`)
 
 ## Expected output
 
-A successful run looks like:
+A successful run produces output similar to:
 
 ```
-..........                                                        [100%]
-10 passed in 0.42s
+collected X items
 
----------- coverage: platform linux, python 3.x ----------
-Name      Stmts   Miss  Cover
------------------------------
-app.py       25      0   100%
+tests/test_*.py ....                          [100%]
+
+============================== X passed in 0.XXs ==============================
 ```
 
-All tests report `passed`, zero failures or errors, and a coverage table for `app` is displayed.
+No errors, no failures, and no warnings that halt execution.
 
 ## Common failures
 
-- **`ModuleNotFoundError: No module named 'pytest'` or `No module named 'pytest_cov'`**: `requirements-dev.txt` is missing `pytest` and/or `pytest-cov`. Add them to `requirements-dev.txt` and re-run the install command.
-- **`ImportError` or confusion importing `app` in tests**: The app module is a single file (`app.py`) at the repo root, not a package. Ensure tests import directly from `app` (e.g., `from app import app`) and that the working directory is the repo root when running `pytest`.
-- **Unexpected behavior from `GREETING` environment variable**: `GREETING` is read once at module load time. If you changed the environment variable after the process started, restart the process or set the variable before invoking `pytest` (e.g., `GREETING=Hello pytest -q --cov=app`).
-- **Dependency conflicts or stale environment**: Delete and recreate your virtual environment, then re-run `pip install -r requirements.txt -r requirements-dev.txt` from a clean state.
-```
+- **Missing `requirements.txt`**: The file tree did not confirm the presence of `requirements.txt` — if `pip install -r requirements.txt` fails, verify the file exists at the repository root and check the project's documentation for the correct dependency file name.
+- **No tests discovered by pytest**: If pytest reports `no tests ran`, the test directory location is unconfirmed (`TODO: verify` in analysis) — locate the test files manually and run `pytest <test_directory>` explicitly.
+- **Swap file conflict on `.openapi.yaml`**: A `.openapi.yaml.swp` file exists, indicating an interrupted edit — resolve or remove the swap file before running any step that parses the OpenAPI spec to avoid stale or corrupt data.
+- **`app.py` or entry point not found**: The application source files were not confirmed in the file tree — if tests import the Flask app and fail with `ModuleNotFoundError`, verify the entry point location before re-running `pytest`.

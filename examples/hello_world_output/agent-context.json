@@ -20,55 +20,44 @@
     ]
   },
   "dynamic": {
-    "last_scanned": "2026-04-28T15:22:00.782073+00:00",
+    "last_scanned": "2026-04-28T19:06:03.468870+00:00",
     "secondary_languages": [],
     "build_system": "pip",
-    "build_command": "",
-    "install_command": "pip install -r requirements.txt -r requirements-dev.txt",
-    "run_command": "python app.py",
+    "build_command": "pip install -r requirements.txt",
+    "install_command": "pip install -r requirements.txt",
+    "run_command": "TODO: verify",
     "test_framework": "pytest",
-    "test_directory": "tests",
+    "test_directory": "TODO: verify",
     "source_directories": [
-      "."
+      "TODO: verify"
     ],
-    "module_layout": {
-      "app": "app.py"
-    },
-    "architecture_summary": "Single-module Flask application exposing three REST endpoints. The app reads configuration from environment variables and serves JSON responses. There is no database or external service dependency; it is a self-contained HTTP server.",
+    "module_layout": {},
+    "architecture_summary": "A minimal single-file Flask REST API exposing three HTTP endpoints: a root endpoint, a health-check endpoint, and a parameterized greeting endpoint. The application follows a simple flat structure with a pytest test suite for verification.",
     "key_components": [
       {
-        "name": "app",
-        "path": "app.py",
-        "responsibility": "Defines the Flask application, all route handlers, and the server entry point."
-      },
-      {
-        "name": "test_app",
-        "path": "tests/test_app.py",
-        "responsibility": "Contains tests for the Flask application endpoints."
+        "name": "Copilot Instructions",
+        "path": ".github/copilot-instructions.md",
+        "responsibility": "GitHub Copilot configuration instructions for the project"
       }
     ],
     "agent_safe_operations": [
-      "Adding new route handlers in app.py",
-      "Adding new test cases in tests/test_app.py",
-      "Updating requirements.txt or requirements-dev.txt with new dependencies",
-      "Modifying greeting logic or response formats"
+      "Adding new Flask route endpoints",
+      "Adding or modifying pytest test cases",
+      "Updating documentation files"
     ],
     "agent_forbidden_operations": [
-      "Removing the /health endpoint (used for availability monitoring)",
-      "Changing the default host binding (0.0.0.0) without explicit instruction",
-      "Removing existing environment variable support (GREETING, PORT)"
+      "Removing existing API endpoints without explicit instruction",
+      "Changing the Flask application entry point structure"
     ],
     "potential_pitfalls": [
-      "The app module is a single file (app.py) at the repo root, not a package \u2014 imports reference 'app' directly.",
-      "The Flask app object and the module share the name 'app', which can cause confusion when importing in tests.",
-      "GREETING is read once at module load time; changing the environment variable after import has no effect without reloading.",
-      "No requirements-dev.txt content was provided \u2014 ensure pytest and pytest-cov are listed there before running tests."
+      "The actual application source files (e.g., app.py, requirements.txt, tests/) are not visible in the provided file tree \u2014 the repository as shown contains only generated AgentReady scaffolding and documentation, not the original Flask application code",
+      "A .openapi.yaml.swp swap file exists, suggesting the OpenAPI spec may have been in the middle of editing"
     ],
     "conventions": {
       "naming": "snake_case",
       "structure": "single-package"
     },
     "has_ci": true,
-    "has_openapi": false
+    "has_openapi": true
   }
 }

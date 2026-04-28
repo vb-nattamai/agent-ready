@@ -5,20 +5,21 @@ trigger: After running the test command
 
 ## Purpose
 
-After `pytest -q --cov=app` completes, this hook captures test results and coverage data and writes them to session state so the agent can make informed decisions about code quality and next steps.
+After `pytest` completes, this hook captures test results and updates session state so the agent can make informed decisions about next steps in the Flask application development workflow.
 
 ## Actions
 
-1. Parse the exit code and stdout/stderr output from `pytest -q --cov=app` to determine pass/fail status, number of tests passed/failed/errored, and the `app` module coverage percentage reported by pytest-cov.
-2. Load `agent-context.json`, update the `last_test_run` field with the timestamp, result summary (pass/fail counts, coverage percentage for `app`), and any failure messages, then write the updated context back to `agent-context.json`.
+1. Parse the `pytest` exit code and output to determine pass/fail status, number of tests collected, and any failure summaries; store results in `agent-context.json` under a `last_test_run` key.
+2. Cross-reference `memory/schema.md` to validate that the updated `agent-context.json` conforms to the session state contract before persisting, then surface a concise test summary (e.g., `X passed, Y failed, Z errors`) to the agent for immediate decision-making.
 
 ## Context loaded
 
-- **agent-context.json**: Current session state is read before updating and written back after; the `last_test_run` field is populated with test outcome, coverage percentage for `app`, and a list of any failing test names.
-- **memory/schema.md**: Consulted to ensure the `last_test_run` field and its subfields conform to the session state contract before writing.
+- Current session state from `agent-context.json` (including prior test run history, active task, and any pending flags).
+- Session state contract from `memory/schema.md` to ensure the written test result structure matches expected schema fields.
+- `pytest` stdout/stderr output and exit code from the completed test run.
 
 ## Skipped when
 
 - `AGENT_SKIP_HOOKS=true` environment variable is set.
-- The test command did not actually execute (e.g., it was interrupted before producing any output or exit code).
-- `agent-context.json` is missing or unreadable and cannot be created, preventing safe state persistence.
+- The `pytest` command was not the test command that triggered this lifecycle point (e.g., a custom runner was invoked directly outside the standard `test_command` configuration).
+- `agent-context.json` is missing or unreadable, preventing state persistence without risking data loss.

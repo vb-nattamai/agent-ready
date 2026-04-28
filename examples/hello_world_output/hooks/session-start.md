@@ -5,23 +5,22 @@ trigger: At the start of every Claude Code session
 
 ## Purpose
 
-Restore prior session state and surface key repository quirks for this single-file Flask app so the agent begins every session with accurate context.
+Initializes session state for the Flask application by loading persisted agent context and verifying the Python environment is ready for development and testing.
 
 ## Actions
 
-1. Load `agent-context.json` from the repository root to restore the current task, last known state, and any in-progress work from the previous session.
-2. Read `memory/schema.md` to confirm the expected shape of session state, then validate that `agent-context.json` conforms to that contract before proceeding.
-3. Remind the agent of the critical project pitfalls: `app.py` is a single-file module (not a package), the Flask app object and module both share the name `app` (watch for import collisions in `tests/`), `GREETING` is resolved once at module load time so environment changes require a reload, and `requirements-dev.txt` must include `pytest` and `pytest-cov` before running `pytest -q --cov=app`.
-4. Verify the Python environment is ready by confirming dependencies are installed (`pip install -r requirements.txt -r requirements-dev.txt`) and that the entry point `app.py` exists at the repo root.
+1. Load `agent-context.json` to restore the previous session's state, including any in-progress tasks, known issues (such as the `.openapi.yaml.swp` swap file indicating an interrupted edit), and notes about unverified configuration fields (`entry_point`, `test_directory`, `run_command`).
+2. Check `memory/schema.md` to confirm the session state contract, then verify the Python environment by confirming `pip install -r requirements.txt` has been run and that `pytest` is available for testing.
 
 ## Context loaded
 
-- **agent-context.json** — current task description, progress markers, open decisions, and any deferred work from the prior session.
-- **memory/schema.md** — the session state contract defining required and optional fields in `agent-context.json`.
-- Repository pitfalls list (single-file module layout, dual `app` name, `GREETING` load-time binding, dev dependency requirements).
+- Current agent state and task continuity from `agent-context.json`
+- Session state schema and field contracts from `memory/schema.md`
+- Known repository gaps: `entry_point`, `test_directory`, and `run_command` are marked `TODO: verify` and should be resolved early in the session
+- Swap file alert: `.openapi.yaml.swp` may indicate the OpenAPI spec was left in an unsaved state and requires inspection
 
 ## Skipped when
 
-- `AGENT_SKIP_HOOKS=true` environment variable is set.
-- `agent-context.json` does not exist (first-ever session with no prior state to restore; the agent should create it instead).
-- The session is explicitly flagged as a clean-slate reset by the user at startup.
+- `AGENT_SKIP_HOOKS=true` environment variable is set
+- `agent-context.json` does not exist yet (first-time repository setup, no prior session to restore)
+- The Python virtual environment is already confirmed active and `requirements.txt` has not changed since the last session

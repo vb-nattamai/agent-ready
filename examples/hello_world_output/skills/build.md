@@ -5,29 +5,29 @@ description: Build the project artifacts.
 
 ## When to use this skill
 
-Use this skill when you need to install dependencies and prepare the project for running or testing.
+Use this skill when you need to install dependencies and prepare the Flask project for local development or deployment.
 
 ## Steps
 
-1. Install all dependencies: `pip install -r requirements.txt -r requirements-dev.txt`
-2. Verify the entry point is present and the Flask app is importable: `python -c "import app; print(app.app)"`
-3. Confirm the app starts without errors: `python app.py`
+1. Install all project dependencies: `pip install -r requirements.txt`
+2. Verify the entry point exists — check for `app.py` or another Flask application file in the repository root (entry point was not confirmed in analysis; inspect the directory if uncertain).
+3. Confirm installation succeeded by running `pip list` and checking that Flask and all expected packages appear without errors.
 
 ## Expected output
 
-Step 1 should complete with pip printing `Successfully installed ...` or `Requirement already satisfied` for all packages listed in both requirements files, ending with no errors.
+A successful run looks like:
 
-Step 2 should print the Flask app object, e.g. `<Flask 'app'>`, confirming the module loads correctly.
+```
+Collecting flask
+  Downloading flask-x.x.x-py3-none-any.whl
+...
+Successfully installed flask-x.x.x <other packages>
+```
 
-Step 3 should show Flask's development server output, e.g.:
-```
- * Running on http://127.0.0.1:5000
- * Debug mode: ...
-```
+`pip list` will show Flask and all dependencies listed in `requirements.txt` as installed in the current environment.
 
 ## Common failures
 
-- **`requirements-dev.txt` not found**: Ensure the file exists and contains at least `pytest` and `pytest-cov`. Create it if missing before re-running the install command.
-- **`ModuleNotFoundError` during import**: A package listed in `requirements.txt` or `requirements-dev.txt` failed to install — check pip output for errors and re-run `pip install -r requirements.txt -r requirements-dev.txt`.
-- **Flask app object naming conflict**: Because the module and the Flask instance are both named `app`, importing in tests may behave unexpectedly. Reference the Flask instance explicitly as `app.app` when needed.
-- **`GREETING` environment variable ignored**: If `GREETING` is set after the process starts, it will have no effect because it is read once at module load time — set the variable in the environment before launching `python app.py`.
+- **`requirements.txt` not found**: The application source files may not be present — the repository may contain only scaffolding. Verify that `requirements.txt` exists in the working directory before running the install command.
+- **`.openapi.yaml` corruption**: A swap file (`.openapi.yaml.swp`) was detected, indicating the OpenAPI spec may have been left in an unsaved edit state. Resolve or remove the swap file before relying on any spec-driven tooling.
+- **Dependency conflicts or version errors**: Create and activate a virtual environment first (`python -m venv .venv && source .venv/bin/activate`) then re-run `pip install -r requirements.txt` to isolate the environment.

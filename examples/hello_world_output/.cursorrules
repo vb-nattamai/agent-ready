@@ -1,7 +1,7 @@
 # hello_world
 
 ## Project overview
-A minimal Flask REST API that provides a greeting endpoint, a health check endpoint, and a personalised greeting endpoint.
+A single-file Python/Flask REST API with three endpoints (/, /health, /greet/<name>) that serves as a minimal greeting and health-check service.
 
 ## Language and framework
 - Primary language: Python
@@ -9,23 +9,23 @@ A minimal Flask REST API that provides a greeting endpoint, a health check endpo
 - Build system: pip
 
 ## Critical commands
-- Install: pip install -r requirements.txt -r requirements-dev.txt
-- Build: Not determinable from source
-- Test: pytest -q --cov=app
-- Run locally: python app.py
+- Install: pip install -r requirements.txt
+- Build: pip install -r requirements.txt
+- Test: pytest
+- Run locally: Not determinable from source
 
 ## Code conventions
 Naming: snake_case
 Structure: single-package
-Source directories: .
+Source directories: TODO: verify
 
 ## Files and directories
-- Entry point: app.py
-- Tests: tests
+- Entry point: TODO: verify
+- Tests: TODO: verify
 
 ## Do not modify
 Not determinable from source — fill in agent-context.json static.restricted_write_paths
 
 ## Domain concepts
-- Greeting: The configurable salutation word (default 'Hello') used in all API responses.
-- Health Check: A lightweight endpoint (/health) that returns service availability status.
+- Greeting: A personalized message returned by the /greet/<name> endpoint for a given name
+- Health Check: An endpoint (/health) that reports the operational status of the API

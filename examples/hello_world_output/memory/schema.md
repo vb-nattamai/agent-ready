@@ -2,229 +2,211 @@
 
 ```yaml
 # =============================================================================
-# WORKING MEMORY SCHEMA — hello_world
-# Flask REST API | Python 3.11 | Single-module architecture
+# AGENT WORKING MEMORY SCHEMA
+# Project: hello_world
+# Description: Minimal Flask REST API (/, /health, /greet/<name>)
 # =============================================================================
-# PURPOSE: This file defines the structure an AI agent must populate and
-# maintain across a session when working in this repository.
-# All sections are derived from actual repository analysis.
+# HOW TO USE THIS FILE:
+#   - This file is the agent's live working memory during a session.
+#   - Update each section as work progresses.
+#   - Do NOT edit the header comment (line 1).
+#   - Sections marked [STATIC] are safe to pre-fill and commit.
+#   - Sections marked [DYNAMIC] should be reset at the start of each session.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# 1. SESSION STATE
-# Tracks the current unit of work, its lifecycle phase, and any blockers.
-# Update this at the start of every new task and whenever phase changes.
+# 1. SESSION STATE [DYNAMIC]
+#    Tracks what the agent is currently doing and where it is in the workflow.
 # -----------------------------------------------------------------------------
 session_state:
-  task_id: null                   # Short identifier, e.g. "add-name-endpoint"
-  task_description: null          # Human-readable description of the current goal
-  status: idle                    # idle | in_progress | blocked | review | done
-  phase: null                     # plan | implement | test | refactor | document
-  started_at: null                # ISO-8601 timestamp, e.g. "2024-05-01T10:00:00Z"
-  last_updated_at: null           # ISO-8601 timestamp of last memory write
-  active_file: null               # File currently being edited, e.g. "app.py"
-  blocking_reason: null           # Populated only when status == "blocked"
-  parent_task_id: null            # Set when this task is a sub-task of another
+  current_task: null            # Short description of the active task, e.g. "Add /farewell/<name> endpoint"
+  status: idle                  # One of: idle | in_progress | blocked | awaiting_review | complete
+  phase: null                   # One of: planning | implementation | testing | documentation | done
+  started_at: null              # ISO-8601 timestamp when the current task began, e.g. "2024-06-01T10:00:00Z"
+  last_updated_at: null         # ISO-8601 timestamp of the most recent memory update
+  agent_notes: null             # Free-text scratchpad for intermediate reasoning or reminders
 
 # -----------------------------------------------------------------------------
-# 2. DECISIONS MADE
-# A chronological log of non-trivial choices. Record the WHY, not just the
-# what. Each entry must be immutable once written — append only.
+# 2. DECISIONS MADE [DYNAMIC]
+#    A log of non-trivial choices made during the session, with rationale.
+#    Format: list of decision records, most recent last.
 # -----------------------------------------------------------------------------
 decisions_made:
-  - decision_id: null             # Unique short ID, e.g. "d-001"
-    timestamp: null               # ISO-8601
-    file_affected: null           # Path relative to repo root, e.g. "app.py"
-    component: null               # Key component name: "app" | "test_app"
-    summary: null                 # One sentence: what was decided
-    rationale: null               # Why this option was chosen over alternatives
-    alternatives_considered: []   # List of strings describing rejected approaches
-    reversible: true              # Whether this decision can be easily undone
-    linked_question_id: null      # Cross-ref to open_questions if decision resolves one
+  - id: null                    # Short unique slug, e.g. "use-flask-jsonify"
+    timestamp: null             # ISO-8601 timestamp
+    context: null               # What situation prompted this decision?
+    decision: null              # What was decided?
+    rationale: null             # WHY — the reasoning behind the choice
+    alternatives_considered:    # Other options that were evaluated but rejected
+      - option: null
+        reason_rejected: null
+    affected_components:        # Which key_components or domain concepts does this touch?
+      - null                    # e.g. "Greeting endpoint", "Health Check"
+    reversible: true            # Boolean — can this be easily undone?
 
-# Example (commented out — do not uncomment, add new entries below):
-# - decision_id: "d-001"
-#   timestamp: "2024-05-01T10:15:00Z"
-#   file_affected: "app.py"
-#   component: "app"
-#   summary: "Read GREETING at request time instead of module load time."
-#   rationale: >
-#     The existing behaviour reads GREETING once at module load, making it
-#     impossible to change without reloading (see potential_pitfalls). Moving
-#     the read inside the route handler allows runtime overrides in tests.
-#   alternatives_considered:
-#     - "Keep module-level read; document limitation in README."
-#     - "Use Flask app.config to cache the value with explicit reload support."
-#   reversible: true
-#   linked_question_id: "q-001"
+  # --- Example (remove or overwrite before use) ---
+  # - id: "return-json-greeting"
+  #   timestamp: "2024-06-01T10:05:00Z"
+  #   context: "Deciding response format for /greet/<name>"
+  #   decision: "Return JSON object { message: 'Hello, <name>!' } instead of plain text"
+  #   rationale: "Consistent with the existing /health endpoint JSON shape; easier for API consumers to parse"
+  #   alternatives_considered:
+  #     - option: "Return plain text string"
+  #       reason_rejected: "Inconsistent with the rest of the API surface"
+  #   affected_components:
+  #     - "Greeting"
+  #   reversible: true
 
 # -----------------------------------------------------------------------------
-# 3. FILES MODIFIED
-# One entry per file touched in the current session. Captures the state
-# before and after, and why the file was changed.
+# 3. FILES MODIFIED [DYNAMIC]
+#    A record of every file touched in this session, with change intent.
+#    Helps the agent avoid redundant re-reads and tracks blast radius.
 # -----------------------------------------------------------------------------
 files_modified:
-  - path: null                    # Relative path, e.g. "app.py"
-    component: null               # Logical component: "app" | "test_app"
-    change_type: null             # created | modified | deleted | renamed
-    change_summary: null          # One sentence describing what changed
-    lines_added: null             # Integer
-    lines_removed: null           # Integer
-    safe_operation: true          # Was this in agent_safe_operations? (bool)
-    pre_change_behaviour: null    # What the code did BEFORE the edit
-    post_change_behaviour: null   # What the code does AFTER the edit
-    dependent_files: []           # Other files that may need updating as a result
-    verified_by_test: false       # Were tests run and passing after this change?
+  - path: null                  # Relative path from repo root, e.g. "app.py"
+    change_type: null           # One of: created | modified | deleted | renamed
+    summary: null               # One-line description of what changed
+    reason: null                # Why this file needed to change
+    linked_decision_id: null    # Optional: matches an id in decisions_made
+    safe_to_overwrite: false    # Boolean — set true only if content is fully agent-generated
+    contains_domain_concepts:   # Which domain_concepts live in or are affected by this file?
+      - null                    # e.g. "Greeting", "Health Check"
 
-# Key files to be aware of when populating this section:
-# - "app.py"            → component "app"      — route handlers, env vars, entry point
-# - "tests/test_app.py" → component "test_app" — pytest test cases
+  # NOTE: The following paths are known key_components — flag immediately if modified:
+  # - .github/copilot-instructions.md  (Copilot Instructions — treat changes carefully)
 
 # -----------------------------------------------------------------------------
-# 4. TESTS RUN
-# Records every test execution during the session. Track coverage against
-# the single module "app" (app.py). Command: pytest -q --cov=app
+# 4. TESTS RUN [DYNAMIC]
+#    Records test executions, results, and coverage observations.
+#    Command: pytest   |   Framework: pytest
 # -----------------------------------------------------------------------------
 tests_run:
-  - run_id: null                  # Short ID, e.g. "t-001"
-    timestamp: null               # ISO-8601
-    trigger: null                 # why tests were run, e.g. "after modifying /greet route"
-    command: "pytest -q --cov=app"
-    outcome: null                 # passed | failed | error
-    total_tests: null             # Integer — total collected
-    passed: null                  # Integer
-    failed: null                  # Integer
-    errors: null                  # Integer — collection/setup errors (not test failures)
-    skipped: null                 # Integer
-    coverage_percent: null        # Float, e.g. 97.5 — coverage of app.py
-    coverage_missing_lines: []    # List of line numbers not covered, e.g. [42, 43]
-    failed_test_ids: []           # List of pytest node IDs for failed tests
-    failure_summaries: []         # Brief description per failure, parallel to failed_test_ids
-    notes: null                   # Any contextual observations about this run
-
-# Baseline reminder: before making changes, record a baseline run so regressions
-# are immediately detectable. Compare coverage_percent across runs.
+  last_run_at: null             # ISO-8601 timestamp of the most recent test run
+  command_used: "pytest"        # Actual command executed (may include flags, e.g. "pytest -v --tb=short")
+  test_directory: null          # TODO: verify — update once test directory is confirmed (e.g. "tests/")
+  outcome: null                 # One of: passed | failed | error | skipped | not_run
+  total_tests: null             # Integer count
+  passed: null
+  failed: null
+  skipped: null
+  error_count: null             # Tests that errored out (not assertion failures)
+  coverage_percent: null        # If coverage plugin is active; null otherwise
+  failing_tests:                # List only tests that failed or errored
+    - test_name: null           # e.g. "test_greet_returns_hello"
+      file: null                # e.g. "tests/test_app.py"
+      failure_message: null     # Short extract of the failure output
+      linked_to_component: null # e.g. "Greeting"
+  notes: null                   # Any observations about flaky tests, environment issues, etc.
 
 # -----------------------------------------------------------------------------
-# 5. OPEN QUESTIONS
-# Items that require human review, clarification, or a decision the agent
-# cannot make autonomously. Resolve by linking to a decisions_made entry.
+# 5. OPEN QUESTIONS [DYNAMIC]
+#    Items that require human review, clarification, or a decision the agent
+#    cannot make unilaterally. Cleared once resolved.
 # -----------------------------------------------------------------------------
 open_questions:
-  - question_id: null             # Unique short ID, e.g. "q-001"
-    raised_at: null               # ISO-8601
-    raised_during_phase: null     # Which session phase surfaced this question
-    question: null                # The precise question needing an answer
-    context: null                 # Why this matters; what work is blocked
-    blocking_task: false          # Does this block the current task? (bool)
-    urgency: null                 # low | medium | high
-    resolution: null              # Populated when answered
-    resolved_at: null             # ISO-8601, null until resolved
-    linked_decision_id: null      # Cross-ref to decisions_made once resolved
+  - id: null                    # Short slug, e.g. "confirm-entry-point"
+    question: null              # The specific question or ambiguity
+    context: null               # Why is this blocking or important?
+    priority: null              # One of: low | medium | high | blocking
+    raised_at: null             # ISO-8601 timestamp
+    resolved: false             # Flip to true once answered
+    resolution: null            # Record the answer here when resolved
 
-# Seed questions derived from repository analysis (uncomment and fill in as needed):
-# - question_id: "q-001"
-#   raised_at: null
-#   question: >
-#     Should GREETING be read at module load time (current behaviour) or at
-#     request time? The current approach means env-var changes have no effect
-#     without a server restart (potential_pitfall).
-#   context: "Affects testability and runtime configurability of the greeting."
-#   blocking_task: false
-#   urgency: low
-#
-# - question_id: "q-002"
-#   raised_at: null
-#   question: >
-#     What packages are in requirements-dev.txt? The analysis notes its content
-#     was not provided. At minimum pytest and pytest-cov must be present for
-#     the test command to succeed.
-#   context: "Blocks test execution if the file is missing or incomplete."
-#   blocking_task: true
-#   urgency: high
+  # --- Pre-seeded questions based on repository analysis ---
+  - id: "confirm-entry-point"
+    question: "What is the actual entry point for the Flask application? (app.py? wsgi.py? run.py?)"
+    context: "The repository analysis lists entry_point as 'TODO: verify'. The agent must know this before modifying or running the app."
+    priority: blocking
+    raised_at: null
+    resolved: false
+    resolution: null
+
+  - id: "confirm-run-command"
+    question: "What is the correct command to run the Flask development server for this project?"
+    context: "run_command is 'TODO: verify'. Could be 'flask run', 'python app.py', or a Makefile target."
+    priority: high
+    raised_at: null
+    resolved: false
+    resolution: null
+
+  - id: "confirm-test-directory"
+    question: "Where does the pytest test suite live? (tests/? test/? inline in the root?)"
+    context: "test_directory is 'TODO: verify'. Required before adding or running tests correctly."
+    priority: high
+    raised_at: null
+    resolved: false
+    resolution: null
+
+  - id: "confirm-source-directories"
+    question: "Which directories (or files) constitute the application source? (e.g. app.py at root? src/? hello_world/?)"
+    context: "source_directories contains 'TODO: verify'. Needed to correctly scope edits."
+    priority: high
+    raised_at: null
+    resolved: false
+    resolution: null
+
+  - id: "openapi-swap-file"
+    question: "Is .openapi.yaml.swp safe to delete? Was the OpenAPI spec editing completed?"
+    context: "A swap file exists, suggesting the spec may have been mid-edit. The agent should not modify openapi.yaml until this is confirmed clean."
+    priority: medium
+    raised_at: null
+    resolved: false
+    resolution: null
 
 # -----------------------------------------------------------------------------
-# 6. DOMAIN STATE
-# Runtime and framework-specific state relevant to this Flask application.
-# Tracks the live shape of the API, environment configuration, and any
-# cross-cutting concerns unique to this project.
+# 6. DOMAIN STATE [DYNAMIC]
+#    Language- and framework-specific runtime state worth tracking across steps.
+#    Scoped to: Python | Flask | pytest
 # -----------------------------------------------------------------------------
 domain_state:
 
-  # Flask application surface — updated whenever routes are added/changed
-  flask_routes:
-    - path: null                  # URL rule, e.g. "/health"
-      methods: []                 # HTTP methods, e.g. ["GET"]
-      handler: null               # Python function name, e.g. "health_check"
-      response_shape: null        # JSON key(s) returned, e.g. '{"status": "ok"}'
-      status: null                # unchanged | added | modified | deleted (this session)
+  # --- Flask Application State ---
+  flask:
+    known_routes:               # All HTTP routes the agent is aware of (from code inspection)
+      - path: "/"
+        methods: ["GET"]
+        description: "Root endpoint — minimal response or welcome message"
+        status: existing        # One of: existing | added_this_session | modified_this_session | deleted_this_session
+      - path: "/health"
+        methods: ["GET"]
+        description: "Health Check — reports operational status of the API"
+        status: existing
+      - path: "/greet/<name>"
+        methods: ["GET"]
+        description: "Greeting — returns a personalized message for the given name"
+        status: existing
+    app_factory_pattern: null   # Boolean or null if unknown — does the app use create_app()?
+    blueprints_in_use: []       # List any Flask Blueprints registered; empty = none detected
+    openapi_spec_path: null     # Path to openapi.yaml once confirmed, e.g. "openapi.yaml"
+    openapi_spec_status: null   # One of: clean | possibly_dirty | unknown (see open_questions/openapi-swap-file)
 
-  # Known routes at session start (from architecture_summary — do not delete):
-  # - /          → GET  → returns greeting JSON
-  # - /health    → GET  → returns availability status   ← MUST NOT be removed
-  # - /<name>    → GET  → returns personalised greeting
+  # --- Python Environment State ---
+  python:
+    virtual_env_active: null    # Boolean — is a venv known to be active in this session?
+    dependencies_installed: null  # Boolean — was pip install -r requirements.txt confirmed to succeed?
+    requirements_file: "requirements.txt"  # Known from build_command
+    known_installed_packages: []  # Populate if the agent reads requirements.txt, e.g. ["flask==3.0.0"]
 
-  # Environment variable state — reflects what is configured in the current environment
-  environment_variables:
-    GREETING:
-      current_value: null         # "Hello" (default) or overridden value
-      default_value: "Hello"
-      read_at: "module_load"      # module_load | request_time — critical pitfall flag
-      overridden_in_tests: null   # true | false — were tests using a custom GREETING?
-    PORT:
-      current_value: null         # Integer or null if not set
-      default_value: 5000         # Assumed Flask default; confirm in app.py
-      overridden_in_tests: null
+  # --- pytest State ---
+  pytest:
+    last_known_passing_tests: []  # List of test names confirmed passing this session
+    last_known_failing_tests: []  # List of test names confirmed failing this session
+    markers_in_use: []            # Any pytest marks observed (e.g. "slow", "integration")
+    fixtures_defined: []          # Named fixtures the agent has read or created this session
 
-  # Greeting domain concept — tracks the configured salutation word
-  greeting:                       # Domain concept: "Greeting"
-    configured_value: null        # Actual value resolved from GREETING env var
-    appears_in_routes: []         # List of route paths where greeting is used
+  # --- Domain Concepts Tracking ---
+  # Reflects the live state of each domain concept during the session.
+  domain_concepts:
+    greeting:
+      # Corresponds to domain_concept: "Greeting"
+      # A personalized message returned by /greet/<name>
+      current_response_shape: null   # e.g. '{ "message": "Hello, <name>!" }' — populate after reading source
+      edge_cases_handled: []         # e.g. ["empty name", "numeric name", "special characters"]
+      edge_cases_pending: []         # Known gaps not yet addressed
 
-  # Health check domain concept — tracks the /health endpoint integrity
-  health_check:                   # Domain concept: "Health Check"
-    endpoint_present: true        # MUST remain true — forbidden to remove /health
-    last_verified_at: null        # ISO-8601 of last test run that confirmed it works
-    response_format: null         # Expected JSON, e.g. '{"status": "ok"}'
-
-  # Dependency state — tracks installed packages relevant to the session
-  dependencies:
-    runtime_packages: []          # Entries from requirements.txt as of session start
-    dev_packages: []              # Entries from requirements-dev.txt as of session start
-    added_this_session: []        # Packages added during this session
-    removed_this_session: []      # Packages removed during this session
-
-  # Test module state — tracks test coverage and fixture patterns
-  test_suite:
-    test_client_configured: null  # true | false — does test_app.py set up a Flask test client?
-    fixtures_used: []             # pytest fixture names in use, e.g. ["client"]
-    endpoints_covered: []         # Route paths with at least one test, e.g. ["/health"]
-    endpoints_uncovered: []       # Route paths with no tests yet
-
-  # Invariants — conditions that must always hold; agent checks these before closing a task
-  invariants:
-    - id: "inv-001"
-      description: "The /health endpoint must exist and return HTTP 200."
-      source: "agent_forbidden_operations"
-      verified: null              # true | false — set after test run
-
-    - id: "inv-002"
-      description: "GREETING environment variable must remain supported (not removed)."
-      source: "agent_forbidden_operations"
-      verified: null
-
-    - id: "inv-003"
-      description: "PORT environment variable must remain supported (not removed)."
-      source: "agent_forbidden_operations"
-      verified: null
-
-    - id: "inv-004"
-      description: "Default host binding must remain 0.0.0.0 unless explicitly instructed."
-      source: "agent_forbidden_operations"
-      verified: null
-
-    - id: "inv-005"
-      description: "All previously passing tests must continue to pass after any change."
-      source: "general_engineering_practice"
-      verified: null
+    health_check:
+      # Corresponds to domain_concept: "Health Check"
+      # Endpoint /health reports operational status
+      current_response_shape: null   # e.g. '{ "status": "ok" }' — populate after reading source
+      checks_performed: []           # What the health endpoint actually verifies (db? uptime? version?)
 ```

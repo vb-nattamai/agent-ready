@@ -2,102 +2,128 @@
 
 # CLAUDE.md — hello_world
 
+A minimal single-file Flask REST API exposing three HTTP endpoints (`/`, `/health`, `/greet/<name>`), with a pytest test suite and OpenAPI specification.
+
+---
+
 ## Critical Commands
 
 Use ONLY these commands — never invent alternatives:
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt
 
-# Build
-# (no build step required)
+# Build (same as install for this project)
+pip install -r requirements.txt
 
-# Test
-pytest -q --cov=app
+# Run all tests
+pytest
 
-# Run
-python app.py
+# Run the application
+# TODO: verify — likely one of:
+#   python app.py
+#   flask run
+# Confirm the actual entry point before running.
 ```
 
 ---
 
 ## Always Do
 
-1. **Add all new route handlers directly in `app.py`** — there is no blueprint or package structure; all Flask routes live in that single file at the repo root.
-2. **Add all new tests in `tests/test_app.py`** — follow the existing file and function naming conventions using `snake_case`.
-3. **Reference the Flask app object by importing from `app`** — e.g. `from app import app` — because `app.py` is a module, not a package.
-4. **Use `snake_case` for all new function names, variable names, and test function names** — this is the established naming convention throughout `app.py` and `tests/test_app.py`.
-5. **Respect both `GREETING` and `PORT` environment variables** — any new configuration values must similarly be read from environment variables to stay consistent with the existing pattern.
-6. **Return JSON responses from all route handlers** — every existing endpoint in `app.py` serves `application/json`; new endpoints must do the same.
-7. **Run `pytest -q --cov=app` after every change** — confirm tests pass and coverage remains complete before considering any task done.
-8. **List new dev-only packages (e.g. test utilities) in `requirements-dev.txt`** and runtime packages in `requirements.txt` — keep these files separate and accurate.
+1. **Locate the real source file before editing.** The Flask application lives in a single file (likely `app.py`). Confirm the file name exists on disk before making any changes.
+2. **Define all new routes inside the existing Flask `app` instance.** Do not create a second `Flask(...)` instantiation; add routes to whichever file already contains the `app = Flask(__name__)` declaration.
+3. **Follow `snake_case` naming for all new functions, variables, and route handler names** — e.g., `def greet_user(name):`, not `def greetUser(name):`.
+4. **Keep all new pytest tests in the designated test directory** (verify actual path, likely `tests/` or a file named `test_*.py`). Every new endpoint must have at least one corresponding test.
+5. **Update `requirements.txt` whenever a new dependency is added.** Use `pip freeze > requirements.txt` or add the package manually with a pinned version.
+6. **Keep the OpenAPI spec (`openapi.yaml` or `.openapi.yaml`) in sync with any new or modified endpoints.** Do not leave the spec describing endpoints that no longer exist, or missing endpoints that do.
+7. **Resolve the `.openapi.yaml.swp` swap file before editing the OpenAPI spec.** Check for unsaved changes with `diff .openapi.yaml.swp` or delete it if it is stale, to avoid clobbering in-progress edits.
+8. **Run `pytest` after every change** — even single-line edits — before considering any task complete.
 
 ---
 
 ## Never Do
 
-1. **Never remove the `/health` endpoint from `app.py`** — it is used for availability monitoring and must remain present and functional at all times.
-2. **Never change the default host binding away from `0.0.0.0`** in the `app.run(...)` call in `app.py` unless explicitly instructed to do so.
-3. **Never remove support for the `GREETING` or `PORT` environment variables** — any refactor of `app.py` must preserve reading and honouring both variables.
-4. **Never restructure `app.py` into a package** (i.e. do not create an `app/` directory with `__init__.py`) without an explicit instruction — doing so will break all existing imports in `tests/test_app.py`.
-5. **Never rename the Flask application object inside `app.py`** away from `app` without updating every reference in `tests/test_app.py` simultaneously.
-6. **Never add a database or external service dependency** without an explicit instruction — the architecture is intentionally self-contained with no external dependencies.
-7. **Never set or override `GREETING` via code after module load** — the variable is read once at import time; doing so has no effect and will cause silent test failures.
-8. **Never install packages not listed in `requirements.txt` or `requirements-dev.txt`** — always add new dependencies to the appropriate file and re-run the install command.
+1. **Never remove the `/`, `/health`, or `/greet/<name>` endpoints** without an explicit instruction to do so. These are the defined API surface of this service.
+2. **Never change the Flask application entry point structure** (the `app = Flask(__name__)` block and its `if __name__ == "__main__":` guard, if present) without explicit instruction.
+3. **Never write to or delete `.github/copilot-instructions.md`** without explicit instruction — this file controls GitHub Copilot behaviour for the whole project.
+4. **Never invent a different test runner.** This project uses `pytest` exclusively. Do not use `unittest` discovery (`python -m unittest`), `nose`, or any other runner.
+5. **Never install packages by editing `requirements.txt` alone without also running `pip install -r requirements.txt`** — the environment must match the file.
+6. **Never commit or leave behind editor swap files** such as `.openapi.yaml.swp`. Remove them before finishing any task that touches the OpenAPI spec.
+7. **Never add a second Flask application instance** in a new file and treat it as the service entry point — there is exactly one app in this single-package structure.
+8. **Never assume source file paths.** Because the actual `app.py`, `requirements.txt`, and test directory are not confirmed in the analysed file tree, always verify a file exists with `ls` or `find` before reading or writing it.
 
 ---
 
 ## Architecture Notes
 
-1. **Single-module Flask application.** The entire application — route definitions, configuration reading, and the server entry point — lives in one file: `app.py` at the repo root. There are no blueprints, sub-packages, or application factories.
-2. **Environment-variable-driven configuration.** `GREETING` (the salutation word, default `"Hello"`) and `PORT` (the HTTP port) are the only configuration surface. Both are read at module load time; the process must be restarted for changes to take effect.
-3. **No persistence or external services.** The application is fully self-contained — no database, cache, or third-party API calls. All state is derived from environment variables and in-process logic only.
-4. **Test suite uses the Flask test client.** `tests/test_app.py` imports the `app` object from the `app` module and exercises endpoints through Flask's built-in test client, so no running server is needed during testing.
+1. **Single-file Flask application.** All route logic is contained in one Python file (expected to be `app.py`). There is no blueprint, factory pattern, or sub-package routing. New endpoints belong in that same file unless explicitly told otherwise.
+2. **Three fixed endpoints define the public API.** `GET /` (root), `GET /health` (health check), and `GET /greet/<name>` (parameterised greeting) are the entire surface area. The OpenAPI spec (`openapi.yaml` / `.openapi.yaml`) is the authoritative description of these contracts.
+3. **Flat, single-package structure with no build artefacts.** There is no compilation step; `pip install -r requirements.txt` is both the install and the "build". The application is run directly from source.
+4. **CI is present.** A CI pipeline (`.github/` directory exists) runs automatically. Any change that breaks `pytest` will fail CI. The Copilot instructions in `.github/copilot-instructions.md` also affect AI-assisted suggestions inside GitHub — keep that file consistent with project conventions.
 
 ---
 
 ## Domain Context
 
 | Term | Definition |
-|------|------------|
-| **Greeting** | The configurable salutation word (default `"Hello"`) used in all API responses. It is set via the `GREETING` environment variable and applied across every greeting-related endpoint. |
-| **Health Check** | A lightweight endpoint at `/health` that returns the service availability status. It must always return a successful response and must never be removed. |
+|---|---|
+| **Greeting** | A personalized message returned by the `/greet/<name>` endpoint for a given name parameter supplied in the URL path. |
+| **Health Check** | The `/health` endpoint reports the operational status of the API; it is intended to be polled by infrastructure or monitoring tools to confirm the service is alive. |
+
+The service has no database, authentication, or persistent state. All responses are generated inline from the request parameters.
 
 ---
 
 ## Known Pitfalls — Read Before Writing Any Code
 
-> **THIS SECTION IS CRITICAL. Read every item before touching any file.**
+> ⚠️ THIS SECTION IS CRITICAL. Read every item before touching any file.
 
-1. The app module is a single file (app.py) at the repo root, not a package — imports reference 'app' directly.
-2. The Flask app object and the module share the name 'app', which can cause confusion when importing in tests.
-3. GREETING is read once at module load time; changing the environment variable after import has no effect without reloading.
-4. No requirements-dev.txt content was provided — ensure pytest and pytest-cov are listed there before running tests.
+1. The actual application source files (e.g., app.py, requirements.txt, tests/) are not visible in the provided file tree — the repository as shown contains only generated AgentReady scaffolding and documentation, not the original Flask application code
+2. A .openapi.yaml.swp swap file exists, suggesting the OpenAPI spec may have been in the middle of editing
 
 ---
 
 ## After Every Change
 
-Run through this checklist before marking any task complete:
+Run through this checklist in order before considering any task done:
 
-- [ ] **Run the full test suite:** `pytest -q --cov=app` — all tests must pass with no errors or warnings.
-- [ ] **Check coverage output** — ensure no new code paths in `app.py` are left uncovered.
-- [ ] **Verify the `/health` endpoint** is still present and unmodified in `app.py`.
-- [ ] **Confirm environment variable support** — `GREETING` and `PORT` are still read and respected in `app.py`.
-- [ ] **Check imports in `tests/test_app.py`** still resolve correctly if any names in `app.py` were changed.
-- [ ] **Verify `requirements.txt` and `requirements-dev.txt`** reflect any newly added packages, and re-run `pip install -r requirements.txt -r requirements-dev.txt` if they were modified.
-- [ ] **Confirm the host binding** in `app.run(...)` is still `0.0.0.0` unless explicitly changed by instruction.
+```
+[ ] 1. Confirm the changed file actually exists at the path you edited
+        (ls <path> or find . -name <filename>).
+
+[ ] 2. Run the full test suite:
+        pytest
+        All tests must pass with zero errors and zero failures.
+
+[ ] 3. If you added or modified any endpoint, verify the OpenAPI spec
+        (openapi.yaml / .openapi.yaml) reflects the current route,
+        method, parameters, and response shape.
+
+[ ] 4. If you added or modified any endpoint, confirm a corresponding
+        pytest test exists in the test directory.
+
+[ ] 5. If you added a dependency, confirm it appears in requirements.txt
+        and that pip install -r requirements.txt completes without error.
+
+[ ] 6. Check that no swap files (*.swp, *.swo) remain in the repository:
+        find . -name "*.sw?" -not -path "./.git/*"
+
+[ ] 7. Confirm you have not removed /, /health, or /greet/<name> routes.
+```
 
 ---
 
 ## Available Skills
 
-Pre-defined slash-command skill files for common agent tasks in this repo:
+Pre-built instruction sets for common agentic tasks in this repository.
 
 | Skill file | Purpose |
 |---|---|
-| `skills/run-tests.md` | Run the full test suite with project-configured settings. |
-| `skills/build.md` | Build the project artifacts. |
-| `skills/run-ci.md` | Trigger or simulate the CI pipeline. |
-| `skills/add-dependency.md` | Add a new dependency to the project. |
+| [`skills/run-tests.md`](skills/run-tests.md) | Run the full test suite with project-configured settings. |
+| [`skills/build.md`](skills/build.md) | Build the project artifacts (install dependencies). |
+| [`skills/run-ci.md`](skills/run-ci.md) | Trigger or simulate the CI pipeline. |
+| [`skills/generate-api-docs.md`](skills/generate-api-docs.md) | Generate or update API documentation from the OpenAPI spec. |
+| [`skills/add-dependency.md`](skills/add-dependency.md) | Add a new dependency to the project safely. |
+
+To invoke a skill, read the corresponding file and follow its instructions exactly. Do not paraphrase or abbreviate the steps it specifies.
