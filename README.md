@@ -22,6 +22,7 @@ AgentReady addresses this at the source. It analyses a repository's structure, s
 
 - [How It Works](#how-it-works)
 - [Generated Artifacts](#generated-artifacts)
+- [Skills and Hooks](#skills-and-hooks)
 - [Evaluation Framework](#evaluation-framework)
 - [Quick Start](#quick-start)
 - [Requirements](#requirements)
@@ -77,6 +78,44 @@ The output is a pull request containing all generated files and a quantified eva
 | `skills/` | Slash-command skill definitions for repo-specific agent actions (run-tests, build, lint, etc.) |
 | `hooks/` | Session-continuity hooks for Claude Code (session-start, pre-tool-call, post-test, pre-commit) |
 | `AGENTIC_EVAL.md` | Evaluation report showing baseline and with-context scores per category |
+
+---
+
+## Skills and Hooks
+
+AgentReady generates repo-specific skill definitions and session hooks in addition to context files. These go beyond telling the agent what the repo is — they tell it what it can do and how to maintain state across sessions.
+
+### Skills
+
+Skills are invocable slash-command definitions placed in the `skills/` directory. Each skill is a self-contained instruction set for a specific repo action, grounded in the commands detected during analysis.
+
+Skills generated depend on what the repo contains:
+
+| Detected signal | Skill generated |
+|---|---|
+| Test runner detected | `skills/run-tests.md` |
+| Build command detected | `skills/build.md` |
+| Linter detected | `skills/lint.md` |
+| Docker or docker-compose present | `skills/start-local.md` |
+| Migration framework detected | `skills/run-migrations.md` |
+| CI config present | `skills/run-ci.md` |
+| OpenAPI spec present | `skills/generate-api-docs.md` |
+| Package manager detected | `skills/add-dependency.md` |
+
+`skills/run-tests.md` and `skills/build.md` are always generated. If exact commands are not determinable from source, the skill file explicitly states what is not known and where to find the information. Commands in skill files come from `agent-context.json`. Skills never invent commands.
+
+### Hooks
+
+Hooks are session continuity definitions placed in the `hooks/` directory. They fire at specific points in the Claude Code lifecycle to load current repository state and enforce constraints.
+
+| Hook | When it fires | Always generated |
+|---|---|---|
+| `hooks/session-start.md` | Start of every Claude Code session | Yes |
+| `hooks/pre-tool-call.md` | Before any file-writing tool call | Yes |
+| `hooks/post-test.md` | After running the test command | When test runner detected |
+| `hooks/pre-commit.md` | Before a git commit | When linter detected |
+
+The `pre-tool-call` hook checks the target path against `restricted_write_paths` in `agent-context.json` before any write operation. This enforces the non-destructive constraint at the tool level, not just at the instruction level.
 
 ---
 
@@ -207,6 +246,9 @@ agentic-ready label applied to issue
     +-- 1. Verify actor has write access to the repository
     +-- 2. Analysis model reads full codebase (~60 seconds)
     +-- 3. Generation model writes all scaffolding files
+    |       Includes: AGENTS.md, CLAUDE.md, .cursorrules, system_prompt.md,
+    |                 agent-context.json, mcp.json, memory/schema.md,
+    |                 skills/ (2-8 files), hooks/ (2-4 files)
     +-- 4. Evaluation model runs 19 questions (baseline vs with-context)
     +-- 5. Open pull request: "Add agentic-ready scaffolding"
     +-- 6. Post PR link as comment on the triggering issue
@@ -328,6 +370,7 @@ See [docs/automation.md](docs/automation.md) for full Gitea configuration includ
 - **Measured** — every transformation includes a quantified evaluation of output quality
 - **Idempotent** — safe to run multiple times; subsequent runs update generated files without duplication
 - **Transparent** — every generated file includes a header identifying it as generated and describing its purpose
+- **Actionable** — skills and hooks extend context into executable instructions, so agents know not just what the repo is but what they can do in it
 
 ---
 
