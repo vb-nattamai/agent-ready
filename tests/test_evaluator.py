@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from agent_ready import evaluator
+from agent_ready.evaluator import _is_agentready_generated
 from agent_ready.ground_truth import (
     _extract_dependency_source,
     _extract_linting_tools,
@@ -458,3 +459,60 @@ def test_extract_static_exists_section_returns_none_when_missing(tmp_path: Path)
     source = {"file": "pyproject.toml", "exists_section": "tool.ruff", "value": "ruff"}
     result = _extract_static(tmp_path, source)
     assert result is None
+
+
+# ── AgentReady generated file filter tests ────────────────────────────────────
+
+
+def test_agentready_files_excluded_from_source_context() -> None:
+    """AgentReady generated files must not appear in source context."""
+    file_contents = {
+        "app.py": "from flask import Flask\napp = Flask(__name__)",
+        "requirements.txt": "flask>=2.3",
+        "CLAUDE.md": "# Claude instructions",
+        "AGENTS.md": "# Agent contract",
+        "agent-context.json": '{"static": {}}',
+        "memory/schema.md": "# Memory schema",
+        "skills/run-tests.md": "# Run tests skill",
+    }
+    filtered = {k: v for k, v in file_contents.items() if not _is_agentready_generated(k)}
+    assert "app.py" in filtered
+    assert "requirements.txt" in filtered
+    assert "CLAUDE.md" not in filtered
+    assert "AGENTS.md" not in filtered
+    assert "agent-context.json" not in filtered
+    assert "memory/schema.md" not in filtered
+    assert "skills/run-tests.md" not in filtered
+
+
+def test_github_workflows_not_excluded() -> None:
+    """.github/workflows/ CI files are source files, not AgentReady generated."""
+    assert not _is_agentready_generated(".github/workflows/ci.yml")
+    assert not _is_agentready_generated(".github/workflows/release.yml")
+
+
+def test_github_copilot_instructions_excluded() -> None:
+    """.github/copilot-instructions.md is AgentReady generated."""
+    assert _is_agentready_generated(".github/copilot-instructions.md")
+
+
+def test_github_codeowners_excluded() -> None:
+    """.github/CODEOWNERS is AgentReady generated."""
+    assert _is_agentready_generated(".github/CODEOWNERS")
+
+
+def test_source_app_py_not_excluded() -> None:
+    """Real source files must pass through the filter."""
+    assert not _is_agentready_generated("app.py")
+    assert not _is_agentready_generated("tests/test_app.py")
+    assert not _is_agentready_generated("pyproject.toml")
+
+
+def test_hooks_dir_excluded() -> None:
+    """hooks/ directory contents are AgentReady generated."""
+    assert _is_agentready_generated("hooks/pre-commit.md")
+
+
+def test_cursorrules_excluded() -> None:
+    """.cursorrules is AgentReady generated."""
+    assert _is_agentready_generated(".cursorrules")
