@@ -28,6 +28,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agent_ready.generator import _usage_totals
+
 # ── LiteLLM call with retry ───────────────────────────────────────────────────
 
 
@@ -56,6 +58,24 @@ def _api_call_with_retry(
                 max_tokens=max_tokens,
                 messages=messages,
             )
+            if hasattr(response, "usage") and response.usage is not None:
+                if model not in _usage_totals["by_model"]:
+                    _usage_totals["by_model"][model] = {"input": 0, "output": 0}
+                in_toks = (
+                    getattr(response.usage, "input_tokens", None)
+                    or getattr(response.usage, "prompt_tokens", 0)
+                    or 0
+                )
+                out_toks = (
+                    getattr(response.usage, "output_tokens", None)
+                    or getattr(response.usage, "completion_tokens", 0)
+                    or 0
+                )
+                _usage_totals["input_tokens"] += in_toks
+                _usage_totals["output_tokens"] += out_toks
+                _usage_totals["calls"] += 1
+                _usage_totals["by_model"][model]["input"] += in_toks
+                _usage_totals["by_model"][model]["output"] += out_toks
             return response.choices[0].message.content.strip()
         except Exception as e:
             err_str = str(e).lower()
@@ -253,6 +273,29 @@ def _flatten_analysis_context(analysis: dict[str, Any]) -> dict[str, Any]:
     if "static" in analysis:
         return {**analysis.get("static", {}), **analysis.get("dynamic", {})}
     return analysis
+
+
+def _infer_language_from_files(target: Path) -> str:
+    """Infer primary language by counting source file extensions."""
+    counts: dict[str, int] = {}
+    ext_to_lang = {
+        ".py": "python",
+        ".js": "javascript",
+        ".ts": "typescript",
+        ".java": "java",
+        ".go": "go",
+        ".rb": "ruby",
+        ".rs": "rust",
+        ".cs": "csharp",
+        ".cpp": "cpp",
+        ".c": "c",
+        ".php": "php",
+    }
+    for path in target.rglob("*"):
+        if path.is_file() and path.suffix in ext_to_lang:
+            lang = ext_to_lang[path.suffix]
+            counts[lang] = counts.get(lang, 0) + 1
+    return max(counts, key=lambda k: counts[k]) if counts else ""
 
 
 def _build_question_result(
@@ -776,21 +819,25 @@ def run_eval(
         print("\n🧪 Running evaluation...")
         print("─" * 50)
 
+    # agent-context.json is optional — eval works on any repo with context files
     ctx_path = target / "agent-context.json"
-    if not ctx_path.exists():
-        raise ValueError("agent-context.json not found. Run the transformer first.")
-
-    analysis = json.loads(ctx_path.read_text())
-    flat = _flatten_analysis_context(analysis)
-    # primary_language may be at top level OR in flat (static/dynamic sections)
-    language = analysis.get("primary_language", "") or flat.get("primary_language", "")
+    if ctx_path.exists():
+        analysis = json.loads(ctx_path.read_text())
+        flat = _flatten_analysis_context(analysis)
+        language = analysis.get("primary_language", "") or flat.get("primary_language", "")
+    else:
+        analysis = {}
+        flat = {}
+        # Infer language from file extensions in the target directory
+        language = _infer_language_from_files(target)
 
     effective_baseline = _resolve_baseline_model(eval_model, baseline_model)
 
     context_system = _build_context_system(target)
     if not context_system:
         raise ValueError(
-            "No context files found. Run the transformer first: agent-ready --target <repo>"
+            "No context files found. Create CLAUDE.md, AGENTS.md, or another context file,\n"
+            "or run agent-ready without --eval-only to generate them."
         )
 
     # Load golden questions (base + language overlay + optional repo custom)

@@ -372,6 +372,8 @@ def _run_llm_pipeline(
         print("   Run: pip install 'agent-ready[ai]'")
         sys.exit(1)
 
+    generator.reset_usage()
+
     if not quiet:
         print(f"\n🤖 LLM-first mode active  [{provider_label} / {models['analysis']}]")
         print("─" * 50)
@@ -395,11 +397,11 @@ def _run_llm_pipeline(
     )
 
     if only:
-        return gen.generate_only(only)
-    return gen.generate_all()
+        result = gen.generate_only(only)
+    else:
+        result = gen.generate_all()
 
-
-# ── Eval Pipeline ──────────────────────────────────────────────────────────
+    return result
 
 
 def _run_eval_pipeline(
@@ -420,12 +422,30 @@ def _run_eval_pipeline(
         print("   Run: pip install 'agent-ready[ai]'")
         sys.exit(1)
 
+    # Cost guard — warn if eval will be expensive
+    eval_model_name = models["generation"]
+    judge_model_name = models["evaluation"]
+    print(f"  📊  Eval: {eval_model_name} (baseline + context) · {judge_model_name} (judge)")
+    print("  💰  Estimated eval cost: ~$0.30-0.60 (38 eval calls + 57 judge calls)")
+
     try:
         result = evaluator.run_eval(
             target=target,
-            eval_model=models["analysis"],  # strong model for context responses
-            judge_model=models["analysis"],  # strong model for judging
-            baseline_model=models["evaluation"],  # weak/cheap model for no-context baseline
+            # EVAL MODEL DESIGN — read before changing these
+            #
+            # eval_model and baseline_model MUST be the same model.
+            # Using different models conflates model capability with context quality,
+            # making the score meaningless as a measure of whether context files help.
+            #
+            # judge_model MUST be different from eval_model to avoid scoring bias.
+            # A model should not judge its own outputs.
+            #
+            # Cost reference (Anthropic):
+            #   38 sonnet eval calls + 57 haiku judge calls ≈ $0.30-0.60 per run
+            #   Previously: 19 haiku + 19 opus + 57 opus ≈ $1.35 per run (3x more expensive, invalid design)
+            eval_model=models["generation"],  # same model for fair context comparison
+            judge_model=models["evaluation"],  # neutral cheap model — must differ from eval_model
+            baseline_model=models["generation"],  # same model as eval_model — this is required
             fail_level=fail_level,
             quiet=quiet,
         )
@@ -446,6 +466,14 @@ def _run_eval_pipeline(
 # ── CLI ────────────────────────────────────────────────────────────────────
 
 
+def _write_cost_report(target: Path) -> None:
+    """Write cost_report.json after ALL pipeline phases complete (gen + eval)."""
+    from agent_ready import generator
+
+    cost_data = generator.get_usage_report()
+    (target / "cost_report.json").write_text(json.dumps(cost_data, indent=2))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Transform any repository into an AI-agent-ready codebase.",
@@ -459,6 +487,8 @@ Examples:
   agent-ready --target /path/to/repo --dry-run
   agent-ready --target /path/to/repo --eval
   agent-ready --target /path/to/repo --eval-only
+  agent-ready --target /path/to/repo --eval-only --provider groq
+  agent-ready --target /path/to/repo --eval-only --fail-level 0.6
   agent-ready --target /path/to/repo --eval-only --fail-level 0.8
   agent-ready --target /path/to/repo --review-pr 42
   agent-ready --target /path/to/repo --review-pr 42 --dry-run
@@ -572,15 +602,42 @@ Or bypass presets entirely with any LiteLLM model string:
 
     # ── Eval-only path ────────────────────────────────────────────────────
     if args.eval_only:
+        # Check for context files — works on any repo, not just AgentReady-transformed ones
+        context_file_names = [
+            "CLAUDE.md",
+            "AGENTS.md",
+            ".cursorrules",
+            "agent-context.json",
+            "system_prompt.md",
+            "mcp.json",
+            ".github/copilot-instructions.md",
+        ]
+        found = [f for f in context_file_names if (target / f).exists()]
+        if not found:
+            print("❌ No context files found in target repo.")
+            print("   Expected one or more of: " + ", ".join(context_file_names))
+            print()
+            print("   Options:")
+            print("     • Run without --eval-only to generate context files automatically.")
+            print("     • Create CLAUDE.md by hand and re-run with --eval-only.")
+            sys.exit(1)
+
         if not args.quiet:
             print()
             print("╔══════════════════════════════════════════════╗")
             print("║   🧪 AgentReady Evaluator v2.0              ║")
             print("╚══════════════════════════════════════════════╝")
             print()
+            print(f"  Found {len(found)} context file(s): {', '.join(found)}")
+
+        from agent_ready import generator
+
+        generator.reset_usage()
+
         _run_eval_pipeline(
             target=target, models=models, fail_level=args.fail_level, quiet=args.quiet
         )
+        _write_cost_report(target)
         return
 
     # ── Transformation ────────────────────────────────────────────────────
@@ -644,6 +701,9 @@ Or bypass presets entirely with any LiteLLM model string:
         _run_eval_pipeline(
             target=target, models=models, fail_level=args.fail_level, quiet=args.quiet
         )
+
+    if not args.dry_run:
+        _write_cost_report(target)
 
 
 if __name__ == "__main__":

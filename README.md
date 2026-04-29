@@ -79,6 +79,7 @@ The output is a pull request containing all generated files and a quantified eva
 | `memory/schema.md` | Agent working memory and state contract |
 | `skills/` | Slash-command skill definitions for repo-specific agent actions (run-tests, build, lint, etc.) |
 | `tools/` | Helper scripts for maintaining the agent context — includes `refresh_context.py` to re-run AgentReady and keep `agent-context.json` current as the codebase evolves |
+| `cost_report.json` | Token usage and estimated USD cost breakdown per model — covers generation and evaluation phases |
 | `hooks/` | Session-continuity hooks for Claude Code (session-start, pre-tool-call, post-test, pre-commit) |
 | `AGENTIC_EVAL.md` | Evaluation report showing baseline and with-context scores per category |
 
@@ -131,9 +132,9 @@ Every transformation includes a structured evaluation that measures whether the 
 | Parameter | Value |
 |---|---|
 | Questions | 19 across 5 categories |
-| Baseline model | claude-haiku-4-5 with no context |
-| Context model | claude-opus-4-6 with all generated files |
-| Judge | 3-panel majority vote (factual, semantic, safety) |
+| Baseline model | claude-sonnet-4-6 with no context |
+| Context model | claude-sonnet-4-6 with all generated files |
+| Judge | claude-haiku-4-5 — 3-panel majority vote (factual, semantic, safety) |
 | Ground truth source | Raw source code — not the generated context files |
 
 ### Observed Results
@@ -149,11 +150,29 @@ Results across Python projects ranging from minimal single-file applications to 
 | Safety and restricted paths | 2.5-2.8 / 10 | 5.6-6.0 / 10 | +3.1-3.2 pts |
 | Adversarial and edge cases | 2.0-2.7 / 10 | 5.3-6.1 / 10 | +2.6-4.1 pts |
 
+Both baseline and context responses use the same model (sonnet), so scores reflect the impact of context files alone — not model capability differences.
+
 The most consistent signal is domain understanding, which moves from 0 to 7.8-9.0 across all tested repositories. Without context, the model is unable to describe the system's purpose. With context, it answers correctly every time.
 
 The adversarial category reflects a known limitation: when the correct answer is "not determinable from the available source files," the model with context sometimes produces confident but incorrect responses, treating the generated scaffolding files as authoritative project documentation. This is under active remediation.
 
 The evaluation report produced after each transformation identifies specifically which questions failed and what information was missing, providing an actionable improvement path rather than a single aggregate score.
+
+### Evaluating existing context files
+
+The evaluation framework works on any repository — not just ones AgentReady transformed.
+If you have written `CLAUDE.md` or `AGENTS.md` by hand, run:
+
+```bash
+agent-ready --target /path/to/repo --eval-only
+```
+
+This scores whatever context files exist and tells you exactly which questions failed and what information was missing. Use it as a benchmark before and after manual edits.
+
+```bash
+# Evaluate and fail CI if pass rate is below 60%
+agent-ready --target /path/to/repo --eval-only --fail-level 0.6
+```
 
 ---
 
@@ -203,11 +222,11 @@ A full transformation makes approximately 50-65 LLM calls depending on which art
 
 ### Approximate cost per provider
 
-Costs are estimates based on a minimal repository. Larger repos with more source files will cost more due to longer analysis input.
+Costs are based on observed runs including the full evaluation phase (38 LLM calls across baseline and context models). A minimal single-file repo costs approximately $1.35. Larger repos with more source files will cost more.
 
 | Provider | Model tier | Approximate cost per run |
 |---|---|---|
-| Anthropic (default) | Opus / Sonnet / Haiku | $0.15 - $0.40 |
+| Anthropic (default) | Opus / Sonnet / Haiku | $1.00 - $1.50 |
 | OpenAI | GPT-4o / GPT-4o-mini | $0.10 - $0.30 |
 | Google | Gemini 2.5 Pro / Flash | $0.05 - $0.20 |
 | Groq | Llama 3.3 70B | $0.01 - $0.05 |
@@ -274,7 +293,8 @@ pip install -e '.[dev]'
 | `agent-ready --target /path/to/repo --only context --force` | Regenerate context map only |
 | `agent-ready --target /path/to/repo --only agents` | Regenerate agent instruction files only |
 | `agent-ready --target /path/to/repo --eval` | Run evaluation after transformation |
-| `agent-ready --target /path/to/repo --eval-only` | Run evaluation against existing files only |
+| `agent-ready --target /path/to/repo --eval-only` | Evaluate existing context files without running transformation |
+| `agent-ready --target /path/to/repo --eval-only --fail-level 0.6` | Evaluate and fail if pass rate is below 60% |
 | `agent-ready --target /path/to/repo --review-pr 42` | Run PR review agent against PR number 42 |
 | `agent-ready --target /path/to/repo --eval --fail-level 0.8` | Fail if eval pass rate is below 80% — use as a CI gate |
 | `agent-ready --target /path/to/repo --quiet` | Suppress output for CI pipelines |
@@ -343,6 +363,8 @@ For manual runs triggered directly from the AgentReady Actions tab, secrets must
 ## Model Strategy
 
 AgentReady applies a tiered model strategy within each provider. The most capable model is used for analysis, a mid-tier model for generation, and the most cost-efficient model for evaluation.
+
+> During evaluation, the generation model is used for both baseline and context responses (ensuring a fair comparison). The evaluation model acts as the judge.
 
 | Provider | Analysis | Generation | Evaluation |
 |---|---|---|---|

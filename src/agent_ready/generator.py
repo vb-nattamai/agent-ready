@@ -23,6 +23,80 @@ GENERATION_HEADER = (
 )
 
 
+# ── Token usage and cost tracking ─────────────────────────────────────────────
+
+_usage_totals: dict = {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "calls": 0,
+    "by_model": {},
+}
+
+ANTHROPIC_PRICING: dict = {
+    "claude-opus-4-6": {"input": 15.00, "output": 75.00},
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5": {"input": 0.80, "output": 4.00},
+    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
+}
+
+
+def _calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    pricing = ANTHROPIC_PRICING.get(model, {"input": 0.0, "output": 0.0})
+    return (
+        input_tokens / 1_000_000 * pricing["input"] + output_tokens / 1_000_000 * pricing["output"]
+    )
+
+
+def get_usage_report() -> dict:
+    total_cost = sum(
+        _calculate_cost(model, data["input"], data["output"])
+        for model, data in _usage_totals.get("by_model", {}).items()
+    )
+    return {**_usage_totals, "estimated_cost_usd": round(total_cost, 4)}
+
+
+def reset_usage() -> None:
+    global _usage_totals
+    _usage_totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "calls": 0,
+        "by_model": {},
+    }
+
+
+# ── Grounding constraint for generation prompts ───────────────────────────────
+
+_GROUNDING_RULES = """\
+CRITICAL GROUNDING RULES — follow these before writing any fact:
+
+1. Only assert facts that are directly present in the analysis input provided.
+2. If a fact cannot be verified from the analysis input, write exactly:
+   "Not determinable from source"
+   Do not infer. Do not make reasonable assumptions. Do not write what is "likely" or "probably" true.
+3. Commands (build, test, run, install) must come verbatim from the analysis input.
+   If no command was detected, write: "Not determinable from source"
+   Do NOT construct commands from framework knowledge (e.g. do not write "pytest -q --cov=app"
+   unless this exact string appears in the analysis input).
+4. File paths must come from the file_tree in the analysis input.
+   Do not invent paths that seem plausible.
+5. Domain concepts must come from the source code analysis.
+   Do not describe what the domain concepts "typically" mean.
+   If domain concepts cannot be extracted from the source: write
+   "Not determinable from source — fill in agent-context.json static.domain_concepts after reviewing your codebase"
+6. Python version, framework version, and tool versions must come from the analysis input.
+   If not detected, write: "Not determinable from source"
+7. For restricted_write_paths: list ONLY paths in the analysis input restricted_write_paths field.
+   If empty or missing: write "Not determinable from source — fill in agent-context.json static.restricted_write_paths after reviewing your repo"
+   Do NOT infer which paths should be restricted from framework conventions.
+8. For directory structure: list ONLY directories and files present in the file_tree from the analysis input.
+   Do NOT invent plausible directories (src/, tests/, docs/, etc.) that are not in the file_tree.
+
+Violating these rules produces context files that hallucinate facts and make AI agents less reliable, not more.
+The goal is grounded accuracy, not completeness.\
+"""
+
+
 # ── LiteLLM call with retry ───────────────────────────────────────────────────
 
 
@@ -44,6 +118,24 @@ def _call(
                 max_tokens=max_tokens,
                 messages=[{"role": "user", "content": prompt}],
             )
+            if hasattr(response, "usage") and response.usage is not None:
+                if model not in _usage_totals["by_model"]:
+                    _usage_totals["by_model"][model] = {"input": 0, "output": 0}
+                in_toks = (
+                    getattr(response.usage, "input_tokens", None)
+                    or getattr(response.usage, "prompt_tokens", 0)
+                    or 0
+                )
+                out_toks = (
+                    getattr(response.usage, "output_tokens", None)
+                    or getattr(response.usage, "completion_tokens", 0)
+                    or 0
+                )
+                _usage_totals["input_tokens"] += in_toks
+                _usage_totals["output_tokens"] += out_toks
+                _usage_totals["calls"] += 1
+                _usage_totals["by_model"][model]["input"] += in_toks
+                _usage_totals["by_model"][model]["output"] += out_toks
             return response.choices[0].message.content.strip()
         except Exception as e:
             err_str = str(e).lower()
@@ -111,17 +203,17 @@ def build_agent_context(
     )
 
     static = existing_static or {
-        "project_name": analysis.get("project_name", ""),
-        "description": analysis.get("description", ""),
-        "primary_language": analysis.get("primary_language", ""),
-        "runtime_version": analysis.get("runtime_version", ""),
-        "frameworks": analysis.get("frameworks", []),
-        "entry_point": analysis.get("entry_point", ""),
+        "project_name": analysis.get("project_name") or "",
+        "description": analysis.get("description") or "",
+        "primary_language": analysis.get("primary_language") or "",
+        "runtime_version": analysis.get("runtime_version") or None,
+        "frameworks": analysis.get("frameworks") or [],
+        "entry_point": analysis.get("entry_point") or None,
         "test_command": test_command,
-        "restricted_write_paths": analysis.get("restricted_write_paths", []),
-        "environment_variables": analysis.get("environment_variables", []),
+        "restricted_write_paths": analysis.get("restricted_write_paths") or [],
+        "environment_variables": analysis.get("environment_variables") or [],
         "domain_concepts": [
-            f"{c['term']}: {c['definition']}" for c in analysis.get("domain_concepts", [])
+            f"{c['term']}: {c['definition']}" for c in analysis.get("domain_concepts") or []
         ],
     }
 
@@ -170,6 +262,9 @@ Repository analysis (derived from reading the actual code):
 
 Write the following sections with SPECIFIC content — reference actual file paths,
 class names, commands, and patterns found in this codebase. No generic advice.
+If information is not in the analysis input, write "Not determinable from source" rather than inventing it.
+
+{_GROUNDING_RULES}
 
 1. ## Project Overview
    Name, what it actually does, language/framework/build tool.
@@ -237,7 +332,10 @@ Repository analysis (derived from reading the actual code):
 
 Write the following sections as DIRECT INSTRUCTIONS.
 Every rule must reference actual file paths, class names, or patterns.
-No generic software engineering advice.
+No generic software engineering advice. If information is not in the analysis input,
+write "Not determinable from source" rather than inventing it.
+
+{_GROUNDING_RULES}
 
 1. ## Critical Commands
    Use ONLY these commands — never invent alternatives:
@@ -289,6 +387,8 @@ Start the file with this exact header on line 1:
 Repository analysis (derived from reading the actual code):
 {_analysis_block(analysis)}
 
+{_GROUNDING_RULES}
+
 Write in second person ("You are working on..."). Cover:
 - What this project does
 - Full tech stack: language, frameworks, build tool
@@ -320,6 +420,8 @@ Start the file with this exact header on line 1:
 
 Repository analysis (derived from reading the actual code):
 {_analysis_block(analysis)}
+
+{_GROUNDING_RULES}
 
 Define a YAML schema for agent memory. Reference actual domain_concepts and key_components.
 
@@ -354,6 +456,8 @@ Start the file with this exact header on line 1:
 
 Repository analysis (derived from reading the actual code):
 {_analysis_block(analysis)}
+
+{_GROUNDING_RULES}
 
 Write a concise, high-signal Copilot instructions file. Include:
 1. One-paragraph project summary (what it does, primary language, key framework)
@@ -719,7 +823,11 @@ def build_cursorrules(analysis: dict[str, Any]) -> str:
 
     lines = [f"# {name}", ""]
 
-    lines += ["## Project overview", desc or "<!-- Fill in: what this project does for its end users -->", ""]
+    lines += [
+        "## Project overview",
+        desc or "<!-- Fill in: what this project does for its end users -->",
+        "",
+    ]
 
     lines += [
         "## Language and framework",
@@ -747,7 +855,9 @@ def build_cursorrules(analysis: dict[str, Any]) -> str:
         conventions_parts.append(f"Source directories: {', '.join(source_dirs)}")
     lines += [
         "## Code conventions",
-        "\n".join(conventions_parts) if conventions_parts else "<!-- Fill in: naming, file structure, patterns -->",
+        "\n".join(conventions_parts)
+        if conventions_parts
+        else "<!-- Fill in: naming, file structure, patterns -->",
         "",
     ]
 
@@ -764,14 +874,20 @@ def build_cursorrules(analysis: dict[str, Any]) -> str:
 
     lines += [
         "## Do not modify",
-        "\n".join(f"- {p}" for p in restricted) if restricted else "Not determinable from source — fill in agent-context.json static.restricted_write_paths",
+        "\n".join(f"- {p}" for p in restricted)
+        if restricted
+        else "Not determinable from source — fill in agent-context.json static.restricted_write_paths",
         "",
     ]
 
-    concept_lines = [f"- {c['term']}: {c['definition']}" for c in domain_concepts if isinstance(c, dict)]
+    concept_lines = [
+        f"- {c['term']}: {c['definition']}" for c in domain_concepts if isinstance(c, dict)
+    ]
     lines += [
         "## Domain concepts",
-        "\n".join(concept_lines) if concept_lines else "Not determinable from source — fill in agent-context.json static.domain_concepts",
+        "\n".join(concept_lines)
+        if concept_lines
+        else "Not determinable from source — fill in agent-context.json static.domain_concepts",
         "",
     ]
 
@@ -780,7 +896,16 @@ def build_cursorrules(analysis: dict[str, Any]) -> str:
 
 # ── skills/ ───────────────────────────────────────────────────────────────────
 
-_LINTERS = {"ruff", "eslint", "checkstyle", "pylint", "flake8", "rubocop", "golangci-lint", "clippy"}
+_LINTERS = {
+    "ruff",
+    "eslint",
+    "checkstyle",
+    "pylint",
+    "flake8",
+    "rubocop",
+    "golangci-lint",
+    "clippy",
+}
 _MIGRATION_FRAMEWORKS = {"flyway", "alembic", "liquibase", "migrate", "knex"}
 _DOCKER_SIGNALS = {"docker", "docker-compose"}
 _PACKAGE_MANAGERS = {"pip", "npm", "yarn", "gradle", "maven", "cargo", "bundler", "go"}
@@ -869,6 +994,8 @@ Repository analysis:
 The skill name is: {skill_name}
 The skill description is: {desc}
 
+{_GROUNDING_RULES}
+
 Write the file using EXACTLY this structure — no deviations:
 
 ---
@@ -914,7 +1041,10 @@ def detect_hooks(analysis: dict[str, Any]) -> list[str]:
     hooks: list[str] = ["session-start", "pre-tool-call"]
 
     test_cmd = analysis.get("test_command", "")
-    if test_cmd and test_cmd not in ("TODO: verify", "TODO: no test suite detected — add tests first"):
+    if test_cmd and test_cmd not in (
+        "TODO: verify",
+        "TODO: no test suite detected — add tests first",
+    ):
         hooks.append("post-test")
 
     frameworks_lower = {f.lower() for f in analysis.get("frameworks", [])}
@@ -968,6 +1098,8 @@ The trigger is: {trigger}
 Context availability:
 - agent-context.json: {context_note}
 - memory/schema.md: {memory_note}
+
+{_GROUNDING_RULES}
 
 Write the file using EXACTLY this structure — no deviations:
 

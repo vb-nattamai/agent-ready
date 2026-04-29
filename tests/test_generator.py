@@ -595,3 +595,31 @@ def test_generate_hook_file_warns_when_agent_context_missing() -> None:
         generator.generate_hook_file("model", "session-start", {}, generated_files=set())
     prompt = mock_call.call_args[0][1]
     assert "not yet generated" in prompt
+
+
+# ── Cost tracking tests ───────────────────────────────────────────────────────
+
+
+def test_cost_calculation_opus() -> None:
+    from agent_ready.generator import _calculate_cost
+
+    cost = _calculate_cost("claude-opus-4-6", 1_000_000, 1_000_000)
+    assert cost == 90.0  # $15 input + $75 output per million tokens
+
+
+def test_cost_calculation_unknown_model_is_zero() -> None:
+    from agent_ready.generator import _calculate_cost
+
+    assert _calculate_cost("unknown-model", 1_000_000, 1_000_000) == 0.0
+
+
+def test_reset_usage_clears_totals() -> None:
+    from agent_ready.generator import _usage_totals, get_usage_report, reset_usage
+
+    _usage_totals["calls"] = 99
+    _usage_totals["input_tokens"] = 5000
+    reset_usage()
+    report = get_usage_report()
+    assert report["calls"] == 0
+    assert report["input_tokens"] == 0
+    assert report["estimated_cost_usd"] == 0.0
