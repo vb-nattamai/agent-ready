@@ -288,6 +288,148 @@ def collect(target: Path, quiet: bool = False) -> dict[str, Any]:
 # ── Phase 2: LLM Analysis ─────────────────────────────────────────────────────
 
 
+def _fact(value: Any, source: str, confidence: str) -> dict[str, Any]:
+    return {"value": value, "source": source, "confidence": confidence}
+
+
+def _not_found() -> dict[str, Any]:
+    return {"value": None, "source": None, "confidence": "not_found"}
+
+
+def extract_verified_facts(repo: dict[str, Any]) -> dict[str, Any]:
+    """Mechanically extract verifiable facts from raw source files — no LLM.
+
+    Each fact includes value, source (file + location), and confidence:
+      high      — directly stated in source
+      inferred  — deduced from conventions (e.g. Flask → likely 'flask run')
+      not_found — no evidence in any source file
+    """
+    config = repo.get("config_files", {})
+    ci = repo.get("ci_files", {})
+    source = repo.get("source_files", {})
+    readme = repo.get("readme", "") or ""
+    file_tree = repo.get("file_tree", [])
+    all_files = {**config, **ci, **source}
+    if readme:
+        all_files["README.md"] = readme
+
+    facts: dict[str, Any] = {}
+
+    # ── test_command ──────────────────────────────────────────────────────────
+    pyproject = config.get("pyproject.toml", "")
+    makefile = config.get("Makefile", "")
+
+    if "[tool.pytest" in pyproject:
+        facts["test_command"] = _fact("pytest", "pyproject.toml [tool.pytest]", "high")
+    elif "pytest" in makefile:
+        for line in makefile.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("test") and "pytest" in stripped:
+                cmd = stripped.split(":", 1)[-1].strip() or "pytest"
+                facts["test_command"] = _fact(cmd, "Makefile", "high")
+                break
+        if "test_command" not in facts:
+            facts["test_command"] = _fact("pytest", "Makefile", "high")
+    else:
+        # Scan CI workflows for test invocations
+        for fname, content in ci.items():
+            for line in content.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("run:") and "pytest" in stripped:
+                    cmd = stripped[4:].strip()
+                    facts["test_command"] = _fact(cmd, fname, "high")
+                    break
+                if stripped.startswith("run:") and "npm test" in stripped:
+                    facts["test_command"] = _fact("npm test", fname, "high")
+                    break
+            if "test_command" in facts:
+                break
+        if "test_command" not in facts:
+            facts["test_command"] = _not_found()
+
+    # ── install_command ───────────────────────────────────────────────────────
+    if "pyproject.toml" in config or "setup.py" in config or "setup.cfg" in config:
+        facts["install_command"] = _fact(
+            "pip install -e .", "pyproject.toml / setup.py", "inferred"
+        )
+    elif "requirements.txt" in config:
+        facts["install_command"] = _fact(
+            "pip install -r requirements.txt", "requirements.txt", "high"
+        )
+    elif "package.json" in config:
+        facts["install_command"] = _fact("npm install", "package.json", "inferred")
+    elif "pom.xml" in config:
+        facts["install_command"] = _fact("mvn install", "pom.xml", "inferred")
+    elif "go.mod" in config:
+        facts["install_command"] = _fact("go mod download", "go.mod", "inferred")
+    else:
+        facts["install_command"] = _not_found()
+
+    # ── entry_point ───────────────────────────────────────────────────────────
+    tree_set = set(file_tree)
+    root_files = [
+        f
+        for f in [
+            "main.py",
+            "app.py",
+            "index.py",
+            "manage.py",
+            "server.py",
+            "index.js",
+            "index.ts",
+            "main.go",
+            "main.java",
+            "main.rs",
+        ]
+        if f in tree_set
+    ]
+    if root_files:
+        ep = root_files[0]
+        facts["entry_point"] = _fact(ep, "file_tree root", "high")
+    else:
+        # Look for if __name__ == "__main__" in source files
+        for fpath, content in source.items():
+            if '__name__ == "__main__"' in content or "__name__ == '__main__'" in content:
+                facts["entry_point"] = _fact(fpath, f"{fpath} __main__ block", "high")
+                break
+        if "entry_point" not in facts:
+            facts["entry_point"] = _not_found()
+
+    # ── python_version ────────────────────────────────────────────────────────
+    if "requires-python" in pyproject:
+        for line in pyproject.splitlines():
+            if "requires-python" in line:
+                ver = line.split("=", 1)[-1].strip().strip('"').strip("'")
+                facts["python_version"] = _fact(ver, "pyproject.toml requires-python", "high")
+                break
+    elif ".python-version" in config:
+        ver = config[".python-version"].strip()
+        facts["python_version"] = _fact(ver, ".python-version", "high")
+    elif "runtime.txt" in config:
+        ver = config["runtime.txt"].strip()
+        facts["python_version"] = _fact(ver, "runtime.txt", "high")
+    else:
+        facts["python_version"] = _not_found()
+
+    # ── restricted_paths ─────────────────────────────────────────────────────
+    gitignore = config.get(".gitignore", "")
+    generated_dirs = [
+        line.strip().rstrip("/")
+        for line in gitignore.splitlines()
+        if line.strip()
+        and not line.startswith("#")
+        and any(kw in line for kw in ["dist", "build", "generated", ".env", "*.egg-info"])
+    ]
+    if generated_dirs:
+        facts["restricted_paths"] = _fact(
+            generated_dirs[:5], ".gitignore (build/generated/dist dirs)", "inferred"
+        )
+    else:
+        facts["restricted_paths"] = _not_found()
+
+    return facts
+
+
 def _llm_call(model: str, system: str, prompt: str, max_tokens: int = 4096) -> str:
     """Single LiteLLM call with retry logic for overloaded errors."""
     try:
@@ -373,6 +515,7 @@ def analyse(
 
     analysis = json.loads(raw.strip())
     analysis.setdefault("has_openapi", repo["has_openapi"])
+    analysis["verified_facts"] = extract_verified_facts(repo)
 
     if not quiet:
         print(f"  ✓ Language: {analysis.get('primary_language', '?')}")

@@ -56,13 +56,10 @@ def get_usage_report() -> dict:
 
 
 def reset_usage() -> None:
-    global _usage_totals
-    _usage_totals = {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "calls": 0,
-        "by_model": {},
-    }
+    _usage_totals["input_tokens"] = 0
+    _usage_totals["output_tokens"] = 0
+    _usage_totals["calls"] = 0
+    _usage_totals["by_model"] = {}
 
 
 # ── Grounding constraint for generation prompts ───────────────────────────────
@@ -74,20 +71,23 @@ CRITICAL GROUNDING RULES — follow these before writing any fact:
 2. If a fact cannot be verified from the analysis input, write exactly:
    "Not determinable from source"
    Do not infer. Do not make reasonable assumptions. Do not write what is "likely" or "probably" true.
-3. Commands (build, test, run, install) must come verbatim from the analysis input.
-   If no command was detected, write: "Not determinable from source"
+3. Commands (build, test, run, install) MUST come from the verified_facts dict in the analysis input.
+   Use these confidence rules:
+   - confidence=high: state the value as fact (e.g. "pytest")
+   - confidence=inferred: state as "detected as likely: <value> — verify before use"
+   - confidence=not_found: write "Not determinable from source" — NEVER invent a command
    Do NOT construct commands from framework knowledge (e.g. do not write "pytest -q --cov=app"
-   unless this exact string appears in the analysis input).
+   unless this exact string appears in the analysis input or verified_facts).
 4. File paths must come from the file_tree in the analysis input.
    Do not invent paths that seem plausible.
 5. Domain concepts must come from the source code analysis.
    Do not describe what the domain concepts "typically" mean.
    If domain concepts cannot be extracted from the source: write
    "Not determinable from source — fill in agent-context.json static.domain_concepts after reviewing your codebase"
-6. Python version, framework version, and tool versions must come from the analysis input.
-   If not detected, write: "Not determinable from source"
-7. For restricted_write_paths: list ONLY paths in the analysis input restricted_write_paths field.
-   If empty or missing: write "Not determinable from source — fill in agent-context.json static.restricted_write_paths after reviewing your repo"
+6. Python version, framework version, and tool versions must come from verified_facts.python_version.
+   If confidence=not_found: write "Not determinable from source"
+7. For restricted_write_paths: use verified_facts.restricted_paths if confidence=high or inferred.
+   If confidence=not_found: write "Not determinable from source — fill in agent-context.json static.restricted_write_paths after reviewing your repo"
    Do NOT infer which paths should be restricted from framework conventions.
 8. For directory structure: list ONLY directories and files present in the file_tree from the analysis input.
    Do NOT invent plausible directories (src/, tests/, docs/, etc.) that are not in the file_tree.
@@ -176,6 +176,7 @@ def _compact_analysis_for_prompt(analysis: dict[str, Any]) -> str:
         "entry_point": analysis.get("entry_point"),
         "restricted_write_paths": analysis.get("restricted_write_paths", []),
         "potential_pitfalls": analysis.get("potential_pitfalls", []),
+        "verified_facts": analysis.get("verified_facts", {}),
     }
     return json.dumps(compact, indent=2)
 

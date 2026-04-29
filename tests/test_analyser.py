@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from agent_ready import analyser
+from agent_ready.analyser import extract_verified_facts
 
 
 def _write(path: Path, content: str) -> None:
@@ -111,3 +112,79 @@ def test_collect_excludes_agent_ready_dirs_from_file_tree(tmp_path: Path) -> Non
     assert len(source_files) == analyser.MAX_SOURCE_FILES
     assert "src/file_000.py" in source_files
     assert f"src/file_{analyser.MAX_SOURCE_FILES + 1:03}.py" not in source_files
+
+
+# ── extract_verified_facts ─────────────────────────────────────────────────
+
+
+def _make_repo(**overrides) -> dict:
+    base = {"file_tree": [], "readme": "", "config_files": {}, "ci_files": {}, "source_files": {}}
+    base.update(overrides)
+    return base
+
+
+def test_verified_facts_test_command_from_pyproject():
+    repo = _make_repo(config_files={"pyproject.toml": "[tool.pytest.ini_options]\naddopts = '-q'"})
+    facts = extract_verified_facts(repo)
+    assert facts["test_command"]["value"] == "pytest"
+    assert facts["test_command"]["confidence"] == "high"
+    assert "pyproject.toml" in facts["test_command"]["source"]
+
+
+def test_verified_facts_test_command_from_requirements():
+    repo = _make_repo(config_files={"requirements.txt": "flask\npytest\n"})
+    facts = extract_verified_facts(repo)
+    # no pytest in config => not_found (requirements.txt is not a command source)
+    assert facts["test_command"]["confidence"] == "not_found"
+
+
+def test_verified_facts_install_command_pip_requirements():
+    repo = _make_repo(config_files={"requirements.txt": "flask\n"})
+    facts = extract_verified_facts(repo)
+    assert facts["install_command"]["value"] == "pip install -r requirements.txt"
+    assert facts["install_command"]["confidence"] == "high"
+
+
+def test_verified_facts_install_command_npm():
+    repo = _make_repo(config_files={"package.json": '{"name": "app"}'})
+    facts = extract_verified_facts(repo)
+    assert facts["install_command"]["value"] == "npm install"
+    assert facts["install_command"]["confidence"] == "inferred"
+
+
+def test_verified_facts_entry_point_from_file_tree():
+    repo = _make_repo(file_tree=["app.py", "requirements.txt"])
+    facts = extract_verified_facts(repo)
+    assert facts["entry_point"]["value"] == "app.py"
+    assert facts["entry_point"]["confidence"] == "high"
+
+
+def test_verified_facts_entry_point_from_main_block():
+    repo = _make_repo(source_files={"myapp.py": 'if __name__ == "__main__":\n    main()'})
+    facts = extract_verified_facts(repo)
+    assert facts["entry_point"]["value"] == "myapp.py"
+    assert facts["entry_point"]["confidence"] == "high"
+
+
+def test_verified_facts_python_version_from_pyproject():
+    repo = _make_repo(config_files={"pyproject.toml": '[project]\nrequires-python = ">=3.11"'})
+    facts = extract_verified_facts(repo)
+    assert facts["python_version"]["value"] == ">=3.11"
+    assert facts["python_version"]["confidence"] == "high"
+
+
+def test_verified_facts_not_found_when_missing():
+    repo = _make_repo()
+    facts = extract_verified_facts(repo)
+    assert facts["test_command"]["confidence"] == "not_found"
+    assert facts["install_command"]["confidence"] == "not_found"
+    assert facts["entry_point"]["confidence"] == "not_found"
+    assert facts["python_version"]["confidence"] == "not_found"
+
+
+def test_verified_facts_restricted_paths_from_gitignore():
+    gitignore = "dist/\nbuild/\n*.egg-info\n__pycache__/\n"
+    repo = _make_repo(config_files={".gitignore": gitignore})
+    facts = extract_verified_facts(repo)
+    assert facts["restricted_paths"]["confidence"] == "inferred"
+    assert any("dist" in v for v in facts["restricted_paths"]["value"])
