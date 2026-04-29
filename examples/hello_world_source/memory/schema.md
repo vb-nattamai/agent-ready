@@ -2,272 +2,274 @@
 
 # Agent Working Memory Schema
 
+This file defines the YAML structure an AI agent should maintain as working memory
+while operating on the **hello_world** repository. The schema is designed to be
+instantiated fresh per session and updated incrementally as work proceeds.
+
+---
+
 ## Project Snapshot (grounding reference)
 
-| Field | Value |
+| Property | Value |
 |---|---|
-| Project | hello_world |
-| Description | A minimal Flask REST API that provides personalised greetings, records them in memory, and exposes health-check and listing endpoints. |
-| Entry Point | `app.py` |
-| Test Directory | `tests/` |
-| Primary Language | Python `>=3.11` |
-| Framework | Flask, pytest |
-| Structure | single-package |
-| Naming Convention | snake_case |
+| **Project** | hello_world |
+| **Description** | A minimal Flask REST API that provides personalised greetings, records them in memory, and exposes health-check and listing endpoints. |
+| **Language** | Python `>=3.11` |
+| **Framework** | Flask, pytest |
+| **Entry Point** | `app.py` |
+| **Test Command** | `pytest` *(confidence: high)* |
+| **Run Command** | `python app.py` |
+| **Install Command** | `pip install -r requirements.txt` |
+| **Build Command** | detected as likely: `pip install -e '.[dev]' 2>/dev/null \|\| pip install -r requirements.txt` — verify before use |
 
 ---
 
-## Commands (verified)
-
-| Purpose | Command | Confidence |
-|---|---|---|
-| Run tests | `pytest` | high |
-| Install (runtime) | `pip install -r requirements.txt` | high |
-| Install (dev/editable) | detected as likely: `pip install -e '.[dev]'` — verify before use | inferred |
-| Run application | `python app.py` | high |
-| Build/install (general) | detected as likely: `pip install -e .` — verify before use | inferred |
-
----
-
-## Memory / Working State Schema
+## Memory Schema (YAML)
 
 ```yaml
-# ============================================================
-# AGENT WORKING MEMORY — hello_world
-# Reset or checkpoint this block at the start of each session.
-# ============================================================
+# =============================================================================
+# hello_world — Agent Working Memory
+# Instantiate one block per agent session. Update fields in-place as work
+# progresses. Never persist state from a previous session into a new one
+# without explicit human review.
+# =============================================================================
 
-schema_version: "1.0"
+schema_version: "1.0"          # bump if schema shape changes
+project: "hello_world"         # fixed; matches repository analysis
 
-# ------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # 1. SESSION STATE
-# Tracks what the agent is doing right now and where it is
-# in the overall workflow.
-# ------------------------------------------------------------
+# Tracks the top-level task the agent is currently executing, its lifecycle
+# phase, and any hard constraints that must be respected throughout.
+# -----------------------------------------------------------------------------
 session_state:
 
-  current_task: ""            # Human-readable description of the active task
-                              # e.g. "Add POST /greet endpoint with JSON body"
+  task_id: ""                  # short unique label, e.g. "add-goodbye-endpoint"
+  task_description: ""         # one-sentence description of what the agent must do
 
-  status: idle                # idle | in_progress | blocked | awaiting_review | complete
+  status: "not_started"        # enum: not_started | in_progress | blocked | review_needed | done
 
-  phase: ""                   # Lifecycle phase of the current task, e.g.:
-                              # planning | implementing | testing | refactoring | done
+  phase: "planning"            # enum: planning | implementation | testing | cleanup | complete
+                               # advance only after the current phase's exit criteria are met
 
-  started_at: ""              # ISO-8601 timestamp when the session began
-                              # e.g. "2025-01-15T09:30:00Z"
+  entry_point_confirmed: false # set true once agent has read app.py and verified
+                               # it still matches the schema's stated entry point
 
-  last_updated_at: ""         # ISO-8601 timestamp of most recent memory update
+  active_endpoints:            # live record of public API surface — update if endpoints change
+    - route: "/"
+      method: "GET"
+      handler: "index"         # function name in app.py
+      status: "unchanged"      # unchanged | modified | added | removed
+    - route: "/health"
+      method: "GET"
+      handler: "health"
+      status: "unchanged"
+    - route: "/greet/<name>"
+      method: "GET"
+      handler: "greet"
+      status: "unchanged"
+    - route: "/greetings"
+      method: "GET"
+      handler: "greetings"
+      status: "unchanged"
 
-  session_goal: ""            # One-sentence statement of what success looks like
-                              # for this session
+  forbidden_operations_acknowledged:
+    # Agent must confirm awareness of each forbidden op before writing code.
+    - op: "Removing or renaming existing public endpoints"
+      acknowledged: false
+    - op: "Changing _greetings data structure shape without updating all consumers and tests"
+      acknowledged: false
+    - op: "Changing default port or host binding without updating documentation"
+      acknowledged: false
+    - op: "Deleting tests/__init__.py"
+      acknowledged: false
 
-  blocking_reason: ""         # If status=blocked, why. Otherwise leave empty.
 
-# ------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # 2. DECISIONS MADE
-# An append-only log of architectural and implementation
-# choices. Helps the agent avoid revisiting settled questions.
-# ------------------------------------------------------------
-decisions_made:
+# Each entry records a non-trivial choice: what was decided, why, what
+# alternatives were considered, and any risks introduced. This log is append-
+# only during a session.
+# -----------------------------------------------------------------------------
+decisions_made: []
 
-  - id: ""                    # Short unique slug, e.g. "use-query-param-for-name"
-    timestamp: ""             # ISO-8601
-    context: ""               # What situation prompted this decision
-    decision: ""              # What was decided
-    rationale: ""             # WHY — the reasoning or trade-off accepted
-    alternatives_rejected:    # Other options that were considered and not chosen
-      - option: ""
-        reason_rejected: ""
-    affects_files:            # Which key_components are impacted
-      - ""                    # e.g. "app.py", "tests/test_app.py"
-    revisit_if: ""            # Condition under which this decision should be
-                              # re-evaluated, e.g. "if a database is introduced"
+# Schema for each entry:
+#
+# - decision_id: ""            # short slug, e.g. "use-list-not-dict-for-store"
+#   timestamp: ""              # ISO-8601, e.g. "2024-11-01T14:32:00Z"
+#   area: ""                   # file or component affected, e.g. "app.py"
+#   description: ""            # what was decided, in one sentence
+#   rationale: ""              # WHY — must cite a concrete reason, not preference
+#   alternatives_considered:   # at least one alternative must be listed
+#     - option: ""
+#       rejected_because: ""
+#   risks_introduced: []       # list strings; leave [] if none identified
+#   reversible: true           # bool — is this decision easy to undo?
 
-# ------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # 3. FILES MODIFIED
-# One entry per file touched in this session. Tracks what
-# changed and why, to support rollback reasoning and PR
-# descriptions.
-# ------------------------------------------------------------
-files_modified:
+# One entry per file touched in this session. Track the pre-change state so
+# the agent can reason about diffs and avoid redundant re-reads.
+# -----------------------------------------------------------------------------
+files_modified: []
 
-  - path: ""                  # Relative path from repo root, e.g. "app.py"
-                              # ONLY paths that exist per the file_tree:
-                              #   app.py | tests/test_app.py
-    change_type: ""           # created | modified | deleted | renamed
-    summary: ""               # One-line description of what changed
-    reason: ""                # Why this file needed to change
-    endpoints_affected:       # (app.py changes only) list any REST endpoints
-      - ""                    # touched, e.g. "/greet/<name>", "/greetings"
-    test_coverage_added: false  # true if new test assertions were added
-    safe_to_revert: true      # false if other files now depend on this change
-    diff_summary: ""          # Optional: brief diff narrative for the agent's
-                              # own reference, e.g. "added /greet POST handler
-                              # and updated _greetings.append call"
+# Schema for each entry:
+#
+# - path: ""                   # relative path from repo root, e.g. "app.py"
+#   component: ""              # key_component name: "app" | "tests" | other
+#   change_type: ""            # enum: created | modified | deleted
+#   summary_of_change: ""      # one sentence: what changed and why
+#   pre_change_state:
+#     endpoints_present: []    # only for app.py — list of routes before edit
+#     greetings_store_shape: ""# only for app.py — note _greetings list structure
+#     test_count: null         # only for test files — integer count before edit
+#   post_change_state:
+#     endpoints_present: []
+#     greetings_store_shape: ""
+#     test_count: null
+#   agent_safe_operation_used: ""
+#   # Must reference one of the declared safe operations:
+#   #   "Adding new GET/POST endpoints in app.py"
+#   #   "Adding new test files or test functions under tests/"
+#   #   "Updating greeting message formatting logic"
+#   #   "Adding new utility functions in separate modules"
+#   #   "Updating dependencies in requirements.txt"
 
-# ------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # 4. TESTS RUN
-# Records every test execution in this session so the agent
-# can reason about whether the suite is currently green.
-# ------------------------------------------------------------
-tests_run:
+# Record every test invocation: the exact command used, outcome, and any
+# failures that must be resolved before the session can advance phases.
+# -----------------------------------------------------------------------------
+tests_run: []
 
-  - timestamp: ""             # ISO-8601 when this test run occurred
-    command: "pytest"         # Verified command — do not alter without re-verifying
-    trigger: ""               # why tests were run, e.g. "after adding /greet POST"
-    outcome: ""               # passed | failed | error | partial
-    summary: ""               # e.g. "5 passed, 0 failed"
-    failed_tests:             # List only if outcome != passed
-      - test_id: ""           # e.g. "tests/test_app.py::test_greet_returns_name"
-        failure_reason: ""    # Short description of the assertion or error
-        related_file: ""      # Which modified file likely caused this failure
-    coverage_note: ""         # Any coverage observation; "Not determinable from
-                              # source" if coverage tooling is not configured
-    greetings_list_state: ""  # Snapshot note on _greetings list state at time of
-                              # run — critical because list persists across requests
-                              # within a process and can cause stale-data failures
-                              # e.g. "reset between tests via fixture" or "not reset"
+# Schema for each entry:
+#
+# - run_id: ""                 # e.g. "run-01"
+#   timestamp: ""              # ISO-8601
+#   command: "pytest"          # MUST be "pytest" per verified_facts — do not invent flags
+#   triggered_by: ""           # e.g. "after modifying greet handler"
+#   outcome: ""                # enum: passed | failed | error | skipped
+#   summary:
+#     total: null              # integer
+#     passed: null             # integer
+#     failed: null             # integer
+#     errors: null             # integer
+#     skipped: null            # integer
+#   failures: []               # list of failing test identifiers, e.g. "tests/test_app.py::test_greet"
+#   coverage: "Not determinable from source"
+#   # Coverage tooling is not confirmed in verified_facts; do not invent a value.
+#   blocking: false            # true if failures must be fixed before proceeding
 
-# ------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # 5. OPEN QUESTIONS
-# Items that require human judgement or cannot be resolved
-# by the agent alone. Must be reviewed before session closes.
-# ------------------------------------------------------------
-open_questions:
+# Items the agent cannot resolve autonomously and must surface to a human
+# before proceeding. Entries are never silently closed — they must be
+# explicitly answered or deferred.
+# -----------------------------------------------------------------------------
+open_questions: []
 
-  - id: ""                    # Short slug, e.g. "thread-safety-requirement"
-    timestamp: ""             # ISO-8601 when question was raised
-    question: ""              # The specific question needing human input
-    context: ""               # Why the agent cannot resolve this autonomously
-    urgency: ""               # low | medium | high | blocking
-    raised_by_pitfall: false  # true if this question was triggered by a known
-                              # potential_pitfall (see list below)
-    pitfall_ref: ""           # If raised_by_pitfall=true, cite the pitfall, e.g.:
-                              # "_greetings list is module-level state"
-    resolution: ""            # Filled in by human or agent once answered
-    resolved_at: ""           # ISO-8601 when resolved; empty if still open
+# Schema for each entry:
+#
+# - question_id: ""            # short slug, e.g. "cors-needed"
+#   raised_at_phase: ""        # session phase when question surfaced
+#   question: ""               # precise question text
+#   context: ""                # why the agent cannot resolve this alone
+#   blocking: false            # true if work cannot continue without an answer
+#   potential_pitfall_ref: ""  # optional — reference to a known pitfall if relevant
+#                              # known pitfalls to draw from:
+#                              #   "global-greetings-state"
+#                              #   "test-client-usage"
+#                              #   "flask-2x-get-shorthand"
+#                              #   "no-cors-configured"
+#                              #   "httpx-in-requirements"
+#   status: "open"             # enum: open | answered | deferred
+#   answer: ""                 # filled by human or resolved by agent with cited evidence
 
-# ------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
 # 6. DOMAIN STATE
-# Tracks the runtime and structural state of the hello_world
-# Flask application as the agent understands it.
-# Referenced concepts: Greeting, Health Check, Service Root
-# Referenced components: app (app.py), test_app (tests/test_app.py)
-# ------------------------------------------------------------
+# Tracks the runtime and framework-specific state of the application as the
+# agent understands it at any point in the session.
+# -----------------------------------------------------------------------------
 domain_state:
 
-  # -- Flask Application Component (app.py) ------------------
-  flask_app:
-    known_endpoints:          # Current authoritative list of registered endpoints
-      - path: "/"
-        method: GET
-        concept: Service Root   # Returns service name and version metadata
-        status: ""              # unchanged | modified | added | removed
-      - path: "/health"
-        method: GET
-        concept: Health Check   # Returns 'ok' status to confirm service is running
-        status: ""
-      - path: "/greet/<name>"
-        method: GET
-        concept: Greeting       # Returns a personalised hello message for <name>
-        status: ""
-      - path: "/greetings"
-        method: GET
-        concept: Greeting       # Returns the list of all recorded greetings
-        status: ""
+  # --- Greeting domain concept ---
+  # A Greeting is a dict with 'name' and 'message' fields, stored in the
+  # module-level _greetings list in app.py.
+  greeting_store:
+    backing_structure: "_greetings"    # module-level list in app.py
+    field_shape:                       # confirmed schema of each item
+      name: "string"
+      message: "string"
+    known_mutations_this_session: []   # list of changes made to shape or population logic
+    isolation_verified: false          # true once agent confirms tests reset _greetings
+                                       # between runs (key pitfall: global state leaks)
 
-    app_variable_name: "app"  # MUST remain 'app' — tests import this symbol directly
-                              # Renaming this is a forbidden operation
+  # --- Health Check domain concept ---
+  health_check:
+    route: "/health"
+    expected_response_shape: "Not determinable from source"
+    # Shape must be read from app.py directly; not inferred from the concept label.
+    status: "unchanged"
 
-    greetings_list:
-      current_item_count: 0   # Agent's best estimate of items in _greetings at
-                              # last observed state; 0 = unknown or reset
-      reset_mechanism: ""     # How tests are resetting the list between runs, e.g.
-                              # "pytest fixture clears list in conftest.py" or
-                              # "not reset — stale data risk present"
-      thread_safety_status: "unsafe"
-                              # "unsafe" until a locking mechanism is confirmed;
-                              # update only if threading is explicitly addressed
+  # --- Service Info domain concept ---
+  service_info:
+    route: "/"
+    expected_response_shape: "Not determinable from source"
+    # Shape (service name and version string) must be read from app.py directly.
+    status: "unchanged"
 
-  # -- Test Component (tests/test_app.py) --------------------
+  # --- Flask application state ---
+  flask:
+    version_confirmed: false           # set true once agent reads installed version
+    decorator_style: "@app.get()"      # shorthand requires Flask 2.x+; see pitfalls
+    test_client_obtained_via: "app.test_client()"
+    cors_configured: false             # no CORS headers present per analysis
+    port_binding: "Not determinable from source"
+    # Default port must be read from app.py; do not assume 5000.
+
+  # --- Dependency state ---
+  dependencies:
+    requirements_txt_last_read: ""     # ISO-8601 timestamp or empty
+    httpx_present: true                # confirmed in requirements.txt per pitfall note
+    httpx_usage_verified: false        # set true once agent confirms whether httpx
+                                       # is used in fixtures or only as a dead dep
+
+  # --- Test suite state ---
   test_suite:
-    last_known_status: ""     # passed | failed | unknown
-    test_count: 0             # Number of test functions the agent is aware of
-    uses_flask_test_client: true
-                              # Flask test client imports 'app' from app.py
-    greetings_isolation: ""   # "isolated" if _greetings reset per test,
-                              # "not-isolated" if list bleeds across tests,
-                              # "unknown" if not yet verified
-
-  # -- Active Pitfall Watch ----------------------------------
-  # Mirrors potential_pitfalls from analysis. Agent sets
-  # triggered=true when a pitfall becomes relevant to the
-  # current task and notes mitigation taken.
-  pitfall_watch:
-
-    - id: "stale-greetings-list"
-      description: >
-        The _greetings list is module-level state — it persists across requests
-        within a process but resets on restart; tests that don't reset the list
-        between runs may see stale data.
-      triggered: false
-      mitigation_taken: ""
-
-    - id: "app-symbol-rename"
-      description: >
-        Flask's test client must import 'app' from app.py; renaming that symbol
-        breaks test discovery.
-      triggered: false
-      mitigation_taken: ""
-
-    - id: "get-only-pattern"
-      description: >
-        All endpoints are GET-only; adding POST/PUT endpoints requires careful
-        attention since the existing pattern uses @app.get() shorthand.
-      triggered: false
-      mitigation_taken: ""
-
-    - id: "middleware-header-changes"
-      description: >
-        No CORS or authentication is configured; adding middleware may change
-        response headers that tests assert on.
-      triggered: false
-      mitigation_taken: ""
-
-    - id: "list-thread-safety"
-      description: >
-        The in-memory store is a plain list with no thread safety; concurrent
-        requests under a threaded server could cause race conditions.
-      triggered: false
-      mitigation_taken: ""
-
-  # -- Forbidden Operations Guard ----------------------------
-  # Agent checks this list before executing any file change.
-  # These come directly from agent_forbidden_operations.
-  forbidden_ops_checklist:
-    - id: "no-remove-rename-endpoints"
-      description: >
-        Removing or renaming existing public endpoints
-        (/, /health, /greet/<name>, /greetings) without updating tests.
-      checked_this_session: false
-    - id: "no-rename-app-variable"
-      description: >
-        Changing the Flask app variable name 'app' which tests likely import
-        directly.
-      checked_this_session: false
-    - id: "no-db-without-migration"
-      description: >
-        Introducing database dependencies without corresponding
-        migration/setup instructions.
-      checked_this_session: false
+    framework: "pytest"                # confirmed — confidence: high
+    test_directory: "tests/"           # confirmed from analysis
+    init_file_present: true            # tests/__init__.py must not be deleted
+    client_fixture_style: "Not determinable from source"
+    # Whether the test client is obtained via a pytest fixture or inline must be
+    # read from tests/test_app.py directly.
+    known_isolation_risk: true         # module-level _greetings may leak between tests
 ```
 
 ---
 
 ## Usage Notes for the Agent
 
-1. **Reset `session_state` at the start of every new task.** Do not carry `current_task` or `phase` forward from a previous session without intentionally continuing that work.
-2. **`decisions_made` is append-only.** Never delete an entry; add a new entry with `revisit_if` populated if a decision is being reconsidered.
-3. **Before modifying `app.py`**, verify the change does not trigger any entry in `forbidden_ops_checklist` and set `checked_this_session: true` for each item reviewed.
-4. **After every test run**, update `tests_run` and set `greetings_list_state` — the `
+1. **Instantiate fresh**: copy the schema block above at the start of every
+   session and fill fields as work proceeds. Do not carry over values from a
+   prior session without explicit human confirmation.
+
+2. **Advance phases deliberately**: only move `session_state.phase` forward
+   after the current phase's work is reflected in `files_modified` and
+   `tests_run`.
+
+3. **Commands are fixed**: the only verified test command is `pytest`. Do not
+   construct compound or flagged variants unless a human provides them or they
+   appear in project configuration files you have read in this session.
+
+4. **Endpoint surface is an invariant**: any change to `active_endpoints` must
+   be accompanied by a `decisions_made` entry and must not remove or rename
+   an existing route.
+
+5. **Resolve pitfalls proactively**: before writing code that touches
+   `_greetings`, confirm `domain_state.greeting_store.isolation_verified` is
+   `true`. Before using `@app.get()`, confirm

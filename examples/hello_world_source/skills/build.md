@@ -5,21 +5,28 @@ description: Build the project artifacts.
 
 ## When to use this skill
 
-Use this skill when you need to install the project and its dependencies to prepare it for development or execution.
+Use this skill when you need to install the project and its dependencies so the application and tests are ready to run.
 
 ## Steps
 
-1. Install the project and its dependencies by running: `pip install -e '.[dev]' 2>/dev/null || pip install -r requirements.txt`
-2. Verify the entry point is accessible: confirm `app.py` exists at the repository root.
-3. Validate the build succeeded by running the application: `python app.py`
+1. Install the project and its dependencies:
+   ```
+   pip install -e '.[dev]' 2>/dev/null || pip install -r requirements.txt
+   ```
+2. Confirm the entry point is present: verify `app.py` exists in the repository root.
+3. Validate the installation succeeded by running the test suite:
+   ```
+   pytest
+   ```
 
 ## Expected output
 
-A successful build produces no error output from the install command, with all dependencies resolved and installed into the active Python environment. Running `python app.py` should start the Flask development server without import errors or missing-module exceptions.
+- The install step completes without errors, reporting successful installation of Flask and all listed dependencies (including `httpx`).
+- `pytest` discovers and runs tests from the `tests/` directory with no collection errors, indicating the installed package is importable and the environment is correctly set up.
 
 ## Common failures
 
-- **Missing Python version**: This project requires Python `>=3.11` (verified from `pyproject.toml`). If the install fails with syntax or compatibility errors, confirm your active Python version meets this requirement before retrying.
-- **`requirements.txt` not found**: The fallback install path (`pip install -r requirements.txt`) will fail if this file does not exist. If `pip install -e '.[dev]'` also fails, check that `pyproject.toml` or `setup.py` is present and well-formed at the repository root.
-- **Editable install fails**: If `pip install -e .` raises an error about missing `setup.py` or `pyproject.toml` build backend, verify those files are intact and that `pip` is up to date (`pip install --upgrade pip`).
-- **`app` symbol not found at runtime**: Flask's test client and other tooling must be able to import `app` from `app.py`. Do not rename that symbol; if you see `ImportError` referencing `app`, confirm the `app` Flask instance is defined at module level in `app.py`.
+- **`pip install -e '.[dev]'` fails with "No such file or directory" or missing `pyproject.toml`/`setup.py`**: The editable install target is not available; the fallback `pip install -r requirements.txt` will run automatically due to the `||` in the build command. Confirm `requirements.txt` exists in the repository root.
+- **`AttributeError` on `@app.get()`**: This shorthand requires Flask 2.x or newer. The installed Flask version is older than required. Upgrade with `pip install --upgrade flask` and confirm the installed version meets the `>=3.11` Python requirement noted for this project.
+- **State leakage between tests**: The `_greetings` list is module-level global state and persists across test functions within the same process. If tests fail intermittently due to unexpected list contents, ensure each test function resets or isolates this state before asserting.
+- **`httpx` missing causes test fixture errors**: `requirements.txt` includes `httpx` as a dependency intended for integration tests. If `httpx` is removed or not installed, test fixtures may fail. Re-run the install command to restore it.

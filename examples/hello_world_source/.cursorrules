@@ -27,6 +27,6 @@ Source directories: .
 Not determinable from source — fill in agent-context.json static.restricted_write_paths
 
 ## Domain concepts
-- Greeting: A recorded personalised message containing a user's name and a hello message, stored in the in-memory list.
-- Health Check: A lightweight endpoint (/health) that returns an 'ok' status to confirm the service is running.
-- Service Root: The index endpoint (/) that returns the service name and version metadata.
+- Greeting: A recorded personalised message generated when the /greet/<name> endpoint is called, stored as a dict with 'name' and 'message' fields.
+- Health Check: The /health endpoint that returns a simple status object indicating the service is running.
+- Service Info: The root endpoint response containing the service name and version string.

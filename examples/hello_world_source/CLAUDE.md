@@ -2,79 +2,73 @@
 
 # CLAUDE.md — hello_world
 
-A minimal Flask REST API that provides personalised greetings, records them in memory, and exposes health-check and listing endpoints.
-
----
-
 ## 1. Critical Commands
 
 Use **only** these commands — never invent alternatives:
 
-| Action  | Command |
-|---------|---------|
+| Purpose | Command |
+|---|---|
 | Install | `pip install -r requirements.txt` |
-| Build   | `pip install -e '.[dev]' 2>/dev/null \|\| pip install -r requirements.txt` |
-| Test    | `pytest` |
-| Run     | `python app.py` |
-
-> **Install command note:** `pip install -e .` detected as likely — verify before use.
+| Build | `pip install -e '.[dev]' 2>/dev/null \|\| pip install -r requirements.txt` |
+| Test | `pytest` |
+| Run | `python app.py` |
 
 ---
 
 ## 2. Always Do
 
-1. **Define all new endpoints in `app.py`** — this is the sole application module; there is no blueprint or router layer to route through.
-2. **Import the Flask application object as `app` from `app.py`** — the test suite in `tests/test_app.py` depends on this exact symbol name; preserve it in every edit.
-3. **Reset `_greetings` between test cases** — the list is module-level state in `app.py`; clear it in a `setup_method`, fixture, or `autouse` fixture so test runs do not bleed state into one another.
-4. **Place all new test files inside `tests/`** — that is the directory pytest is configured to discover; test files outside it will not be picked up automatically.
-5. **Use snake_case for all new identifiers** — variable names, function names, module names, and file names follow the snake_case convention used throughout the codebase.
-6. **Run `pytest` after every code change** — it is the single verified test command for this project; do not substitute alternatives.
-7. **Target Python ≥ 3.11** — this is the verified minimum runtime version declared in `pyproject.toml`; do not use syntax or stdlib features unavailable in 3.11.
-8. **Keep Flask as the only external dependency unless explicitly adding one** — the architecture has no database or external service; any new runtime dependency must be added to `requirements.txt` and documented.
+1. **Define all new route handlers in `app.py`** — this is the single module that owns the Flask application instance, all routes, and the in-memory store. Do not split routes into a separate file without updating imports everywhere.
+2. **Place all new test functions or test files inside `tests/`** — pytest is configured to discover tests from that directory. New test files must follow the `test_*.py` naming convention to be picked up automatically.
+3. **Reset `_greetings` state in test fixtures** — because `_greetings` is module-level global state in `app.py`, each test function must explicitly clear it (e.g. `app._greetings.clear()`) or use a fixture that does so, to prevent state leakage between tests.
+4. **Obtain the test client via `app.test_client()`** — when writing tests in `tests/test_app.py`, always use the Flask test client. Importing `app` directly gives you the Flask instance, not a running HTTP server.
+5. **Target Python ≥ 3.11** — the project specifies `requires-python = ">=3.11"` in `pyproject.toml`. Do not use syntax or stdlib features that are unavailable on 3.11.
+6. **Use `snake_case` for all new identifiers** — functions, variables, and module names follow `snake_case` throughout this codebase.
+7. **Keep `tests/__init__.py` in place** — this file is required for pytest test discovery. Do not delete or move it.
+8. **Return dicts with consistent field shapes from route handlers** — the `/greet/<name>` endpoint stores entries as `{"name": ..., "message": ...}`. Any code that reads from `_greetings` depends on both fields being present.
 
 ---
 
 ## 3. Never Do
 
-1. **Do not remove or rename the endpoints `/`, `/health`, `/greet/<name>`, or `/greetings`** — these are the existing public API surface; removing or renaming them without simultaneously updating `tests/test_app.py` will break the test suite.
-2. **Do not rename the `app` variable in `app.py`** — `tests/test_app.py` imports this symbol directly; changing its name breaks test client instantiation and test discovery.
-3. **Do not introduce a database dependency** — the architecture is intentionally in-memory; adding a database requires migration scripts, setup instructions, and test fixtures that do not currently exist.
-4. **Do not write to restricted paths** — Not determinable from source — fill in `agent-context.json` static.restricted_write_paths after reviewing your repo.
-5. **Do not add middleware (CORS, authentication, etc.) without auditing response-header assertions in `tests/test_app.py`** — middleware can silently alter response headers that existing tests assert on, causing false failures.
-6. **Do not rely on the `_greetings` list persisting across process restarts** — it is in-memory only; data is lost on every restart and must never be treated as durable storage.
-7. **Do not use `@app.route()` with explicit `methods=` when adding a simple GET endpoint** — the existing pattern uses the `@app.get()` shorthand; maintain consistency unless adding a non-GET method.
-8. **Do not introduce thread-shared mutable state without a lock** — `_greetings` is an unprotected plain list; any new shared state added under a threaded server carries the same race-condition risk.
+1. **Do not remove or rename `/`, `/health`, `/greet/<name>`, or `/greetings`** — these are the four public endpoints. Removing or renaming them breaks API consumers.
+2. **Do not change the shape of entries in `_greetings`** — every entry must remain a dict with exactly the `name` and `message` fields. Changing this without updating all route handlers and all tests in `tests/test_app.py` will cause silent failures.
+3. **Do not change the default port or host binding in `app.py`** without updating documentation — callers and any integration test fixtures depend on the configured address.
+4. **Do not delete `tests/__init__.py`** — removing it breaks pytest test discovery for the `tests/` package.
+5. **Do not remove `httpx` from `requirements.txt`** without first verifying that no test fixture in `tests/` depends on it — it is present in `requirements.txt` despite not being used by `app.py`, and removing it could break test infrastructure.
+6. **Do not use `@app.route()` with `methods=` as a reason to drop `@app.get()` shorthand** — the codebase uses the Flask 2.x `@app.get()` shorthand. Do not mix styles; keep new endpoints consistent.
+7. **Do not write to restricted paths** — Not determinable from source — fill in `agent-context.json` static.restricted_write_paths after reviewing your repo.
+8. **Do not add CORS headers to individual routes** — if CORS support is needed, it must be added consistently (e.g. via `flask-cors`) across the entire application, not piecemeal per route.
 
 ---
 
 ## 4. Architecture Notes
 
-1. **Single-module application** — the entire Flask application, all four endpoints, and the in-memory data store are defined in one file: `app.py`. There is no package structure, blueprint layer, or separate data-access module.
-2. **In-memory store, no persistence** — greetings are held in a module-level Python list (`_greetings`) inside `app.py`. This list is scoped to the running process; it resets on every restart and is not thread-safe.
-3. **Test isolation is manual** — because state lives in a module-level list rather than a database or fixture-managed object, tests in `tests/test_app.py` must explicitly reset `_greetings` between cases. Pytest does not do this automatically.
-4. **No CI-injected configuration** — the project has a CI pipeline (has_ci: true) but no environment variables are declared; the application requires no external configuration to start and runs with Flask defaults when invoked via `python app.py`.
+1. **Single-module application** — the entire Flask application lives in `app.py`: the `app` instance, all four route handlers (`/`, `/health`, `/greet/<name>`, `/greetings`), and the `_greetings` list. There is no application factory, no blueprints, and no external persistence layer.
+2. **In-memory state only** — `_greetings` is a plain Python list declared at module scope in `app.py`. It accumulates entries for the lifetime of the process and is wiped on restart. There is no database, no file-backed store, and no cache layer.
+3. **No external service dependencies at runtime** — the only runtime dependency is Flask. `httpx` is present in `requirements.txt` but is not imported by `app.py`; it is likely used only during testing.
+4. **Test coverage via Flask test client** — all tests in `tests/test_app.py` exercise the application through Flask's built-in test client. There are no unit tests for isolated functions and no live-server integration tests.
 
 ---
 
 ## 5. Domain Context
 
 | Term | Definition |
-|------|------------|
-| **Greeting** | A recorded personalised message containing a user's name and a hello message, stored in the in-memory list (`_greetings` in `app.py`). |
-| **Health Check** | A lightweight endpoint (`/health`) that returns an `ok` status to confirm the service is running. |
-| **Service Root** | The index endpoint (`/`) that returns the service name and version metadata. |
+|---|---|
+| **Greeting** | A recorded personalised message generated when the `/greet/<name>` endpoint is called, stored as a dict with `name` and `message` fields inside `_greetings` in `app.py`. |
+| **Health Check** | The `/health` endpoint that returns a simple status object indicating the service is running. |
+| **Service Info** | The root `/` endpoint response containing the service name and version string. |
 
 ---
 
 ## 6. Known Pitfalls — Read Before Writing Any Code
 
-> **This section is critical. Read every item before touching any file.**
+> ⚠️ These pitfalls were identified directly from the source code. Read all of them before making any change.
 
-1. The `_greetings` list is module-level state — it persists across requests within a process but resets on restart; tests that don't reset the list between runs may see stale data.
-2. Flask's test client must import `app` from `app.py`; renaming that symbol breaks test discovery.
-3. All endpoints are GET-only; adding POST/PUT endpoints requires careful attention since the existing pattern uses `@app.get()` shorthand.
-4. No CORS or authentication is configured; adding middleware may change response headers that tests assert on.
-5. The in-memory store is a plain list with no thread safety; concurrent requests under a threaded server could cause race conditions.
+1. The `_greetings` list is module-level global state; it persists across requests within a process but resets on restart, and tests may leak state between test functions if not isolated.
+2. Flask's test client must be obtained via `app.test_client()`; importing `app` directly gives you the Flask instance, not a running server.
+3. The app uses `@app.get()` shorthand (Flask 2.x+); older Flask versions will raise `AttributeError`.
+4. No CORS headers are configured, so browser-based clients hitting the API will be blocked by default.
+5. `requirements.txt` includes `httpx` but the app only uses Flask; `httpx` may be intended for integration tests — removing it could break test fixtures.
 
 ---
 
@@ -82,22 +76,80 @@ Use **only** these commands — never invent alternatives:
 
 Run through this checklist before considering any change complete:
 
-- [ ] **Run the test suite:** `pytest`
-- [ ] All existing tests in `tests/test_app.py` pass with no errors or warnings introduced by your change.
-- [ ] If you added a new endpoint, a corresponding test function exists in `tests/test_app.py` (or a new file under `tests/`).
-- [ ] If you modified response structure (keys, status codes, headers), verify that no existing test assertion in `tests/test_app.py` breaks.
-- [ ] If you added or removed a dependency, `requirements.txt` reflects the change and `pip install -r requirements.txt` installs cleanly.
-- [ ] The `app` variable name in `app.py` is unchanged.
-- [ ] Any test that touches `_greetings` resets the list before asserting, either in the test body or via a fixture.
-- [ ] The application still starts without error: `python app.py`.
+- [ ] **Run the full test suite:** `pytest`
+- [ ] **Verify all four endpoints still exist** in `app.py`: `/`, `/health`, `/greet/<name>`, `/greetings`
+- [ ] **Check `_greetings` entry shape** — any new code writing to `_greetings` must produce dicts with both `name` and `message` fields
+- [ ] **Confirm test isolation** — if you added or modified tests in `tests/test_app.py`, ensure each test function resets `_greetings` state and does not depend on execution order
+- [ ] **Confirm `tests/__init__.py` is still present** in `tests/`
+- [ ] **Install dependencies and re-run** if you modified `requirements.txt`: `pip install -r requirements.txt && pytest`
+- [ ] **Check for Python 3.11 compatibility** if you used any newer language features
 
 ---
 
 ## 8. Available Skills
 
-Self-contained instruction sets grounded in the commands above. Load the relevant skill file before performing the described task.
+Reusable slash-command skill definitions grounded in the commands for this project.
 
-- [`skills/run-tests.md`](skills/run-tests.md) — Run the full test suite with project-configured settings.
-- [`skills/build.md`](skills/build.md) — Build the project artifacts.
-- [`skills/run-ci.md`](skills/run-ci.md) — Trigger or simulate the CI pipeline.
-- [`skills/add-dependency.md`](skills/add-dependency.md) — Add a new dependency to the project.
+### `skills/run-tests.md`
+```markdown
+# Skill: run-tests
+Run the full test suite with project-configured settings.
+
+## Command
+pytest
+
+## Notes
+- Tests live in tests/. All test files follow the test_*.py convention.
+- The _greetings list in app.py is global state. If tests fail unexpectedly,
+  check whether a previous test left entries in _greetings.
+- Do not pass additional flags (e.g. --cov, -q) unless you have verified
+  they are supported by the installed version of pytest and its plugins.
+```
+
+### `skills/build.md`
+```markdown
+# Skill: build
+Build the project and install all dependencies.
+
+## Command
+pip install -e '.[dev]' 2>/dev/null || pip install -r requirements.txt
+
+## Notes
+- The command attempts an editable dev install first; if pyproject.toml
+  does not define a [dev] extra, it falls back to requirements.txt.
+- After running this command, verify Flask is importable before proceeding.
+```
+
+### `skills/run-ci.md`
+```markdown
+# Skill: run-ci
+Simulate the CI pipeline locally.
+
+## Steps
+1. pip install -e '.[dev]' 2>/dev/null || pip install -r requirements.txt
+2. pytest
+
+## Notes
+- The repository has CI configured (has_ci: true). The exact CI platform
+  and configuration file are not determinable from source — check the
+  repository root for .github/, .gitlab-ci.yml, or equivalent.
+- Reproduce CI failures locally by running the two steps above in order.
+```
+
+### `skills/add-dependency.md`
+```markdown
+# Skill: add-dependency
+Add a new runtime or development dependency to the project.
+
+## Steps
+1. Add the package (with a version pin if required) to requirements.txt.
+2. Run: pip install -r requirements.txt
+3. Run: pytest
+   Confirm no existing tests are broken by the new dependency.
+
+## Notes
+- Do not remove existing entries from requirements.txt without checking
+  whether test fixtures depend on them (see httpx pitfall in CLAUDE.md).
+- If pyproject.toml defines dependency lists, keep it in sync with
+  requirements.txt to avoid inconsistencies.
+```
