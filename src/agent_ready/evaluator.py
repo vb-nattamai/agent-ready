@@ -682,10 +682,20 @@ Return JSON:
             {"role": "system", "content": JUDGE_SYSTEM},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=300,
+        max_tokens=512,
     )
 
-    return json.loads(_strip_markdown_fences(raw))
+    try:
+        return json.loads(_strip_markdown_fences(raw))
+    except json.JSONDecodeError:
+        # Truncated response — return a safe neutral result rather than crashing
+        return {
+            "score": 5,
+            "correct": False,
+            "reasoning": "Judge response truncated.",
+            "hallucinated": False,
+            "key_missing": "",
+        }
 
 
 # ── Multi-agent judge panel ───────────────────────────────────────────────────
@@ -759,9 +769,18 @@ Return JSON:
                 {"role": "system", "content": panel["system"]},
                 {"role": "user", "content": judge_prompt},
             ],
-            max_tokens=300,
+            max_tokens=512,
         )
-        result = json.loads(_strip_markdown_fences(raw))
+        try:
+            result = json.loads(_strip_markdown_fences(raw))
+        except json.JSONDecodeError:
+            result = {
+                "score": 5,
+                "correct": False,
+                "reasoning": "Judge response truncated.",
+                "hallucinated": False,
+                "key_missing": "",
+            }
         return {"name": panel["name"], "label": panel["label"], "icon": panel["icon"], **result}
 
     panel_results: list[dict[str, Any]] = []
