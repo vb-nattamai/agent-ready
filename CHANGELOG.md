@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.12.5] — 2026-04-29
+
+
+### Fixed
+
+- provider-aware LLM client, cost attribution per provider, multi-provider pricing
+
+### Changed
+
+- docs: update eval results to 12/19 (63%), 26% hallucination — post all fixes
+- chore: update hello_world_source eval and cost report post-rebase
+- chore: sync hello_world_output with post-10B regeneration — 12/19 (63%), 26% hallucination
+
+---
 ## [2.12.4] — 2026-04-29
 
 
