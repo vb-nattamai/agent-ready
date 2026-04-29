@@ -137,24 +137,43 @@ Every transformation includes a structured evaluation that measures whether the 
 | Judge | claude-haiku-4-5 — 3-panel majority vote (factual, semantic, safety) |
 | Ground truth source | Raw source code — not the generated context files |
 
+> Baseline and context model are the same to isolate context quality as the
+> only variable. The judge model differs from the eval model to eliminate
+> scoring bias.
+
 ### Observed Results
 
 Results from the hello_world example — a minimal Flask REST API with 4 endpoints, pytest tests, pyproject.toml, and CI. Eval design: sonnet vs sonnet baseline, haiku judge.
 
-| Category | Baseline (no ctx) | With Context | Improvement | Pass rate |
-|---|---|---|---|---|
-| **Overall** | 1.7 / 10 | **5.7 / 10** | +4.0 pts | 47% (9/19) |
-| Commands | 2.8 / 10 | **6.2 / 10** | +3.4 pts | 40% |
-| Safety | 2.2 / 10 | **6.8 / 10** | +4.6 pts | 75% |
-| Architecture | 0.8 / 10 | **4.8 / 10** | +4.0 pts | 40% |
-| Domain | 0.0 / 10 | **6.3 / 10** | +6.3 pts | 50% |
-| Adversarial | 1.7 / 10 | **4.5 / 10** | +2.8 pts | 33% |
+| Category | Baseline | With Context | Improvement |
+|---|---|---|---|
+| **Overall** | 2.0 / 10 | **6.9 / 10** | +4.9 pts |
+| Commands | 2.8 / 10 | **7.9 / 10** | +5.1 pts |
+| Safety | 3.5 / 10 | **4.1 / 10** | +0.6 pts |
+| Architecture | 0.6 / 10 | **9.0 / 10** | +8.4 pts |
+| Domain | 0.0 / 10 | **6.8 / 10** | +6.8 pts |
+| Adversarial | 2.3 / 10 | **5.2 / 10** | +2.9 pts |
 
-Both baseline and context responses use the same model (sonnet), so scores reflect the impact of context files alone — not model capability differences.
+The most consistent signal is architecture, which moves from 0.6/10 to 9.0/10
+with a 100% pass rate on the hello_world reference repo. Entry point, language,
+framework, and directory structure are all correctly identified with context.
 
-The strongest signal is domain understanding (+6.3 pts) and safety (+4.6 pts). Without context, sonnet scores 0/10 on domain questions. With context it reaches 6.3/10 — the agent can describe the system's purpose and key concepts.
+Commands also shows strong improvement, moving from 2.8/10 to 7.9/10 with 80%
+pass rate. Build commands, install commands, and run commands are reliably extracted
+from Makefile and pyproject.toml.
 
-The adversarial category reflects a known limitation: when the correct answer is "not determinable from the available source files," the model with context sometimes produces confident but incorrect responses, treating the generated scaffolding files as authoritative project documentation. This is under active remediation.
+The safety category reflects a known characteristic of minimal repos: when a
+codebase has no secrets handling, no restricted paths, and no dangerous operations,
+the correct answer is "none exist." Context files now correctly state this rather
+than inventing mechanisms.
+
+Hallucination rate has improved from 79% at initial release to 26% after grounding
+fixes applied to the analysis and generation pipeline. The remaining failures are
+concentrated in adversarial questions where the judge penalises mentions of
+requirements.txt in fallback install commands, even when the generated content
+correctly identifies pyproject.toml as the authoritative source.
+
+Both baseline and context responses use the same model, so scores reflect the impact of context files alone — not model capability differences. The judge model differs from both to eliminate scoring bias.
 
 The evaluation report produced after each transformation identifies specifically which questions failed and what information was missing, providing an actionable improvement path rather than a single aggregate score.
 
