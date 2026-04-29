@@ -5,33 +5,31 @@ description: Run the full test suite with project-configured settings.
 
 ## When to use this skill
 
-Use this skill when you need to execute the full test suite to verify correctness of changes made to the codebase.
+Use this skill whenever you need to verify that all tests pass after making changes to the codebase.
 
 ## Steps
 
-1. Install dependencies using the exact install command from the project configuration:
-   ```
-   pip install -r requirements.txt
-   ```
-   > **Caution:** No `requirements.txt` is confirmed present in the file tree. If this file is missing, dependency installation will fail. See Common Failures below.
-
-2. Run the test suite using the project-configured test command:
-   ```
-   pytest
-   ```
-
-3. Review the output to confirm all tests pass — look for a summary line indicating zero failures and zero errors.
+1. Install project dependencies: `pip install -e .`
+2. Run the full test suite: `pytest`
+3. Confirm success by reviewing the summary line printed at the end of the pytest output.
 
 ## Expected output
 
-A successful run produces a pytest summary showing all collected tests passing, with no FAILED or ERROR entries. The final summary line will indicate the number of tests passed (e.g., `X passed in Y.XXs`).
+A successful run produces a pytest summary line such as:
+
+```
+collected N items
+
+tests/... PASSED
+...
+N passed in X.XXs
+```
+
+All collected test items should show `PASSED` with no `FAILED`, `ERROR`, or `WARNING` lines related to test results.
 
 ## Common failures
 
-- **`requirements.txt` not found**: The analysis notes that no `requirements.txt` is confirmed visible in the repository file tree. This repository appears to be an example output directory, not the actual Flask application source. Locate the correct source repository and run this skill there.
-
-- **No tests collected**: The test directory could not be verified from the analysis input. If pytest reports `no tests ran` or `collected 0 items`, confirm the location of test files manually and pass the correct path to `pytest` — the test directory is not determinable from source.
-
-- **Import errors or missing modules**: If pytest fails due to missing dependencies, the application source files may not be present — this is flagged as a known pitfall. Verify you are operating on the full application repository, not just the AgentReady-generated artifacts directory.
-
-- **Entry point or application not found**: The application entry point is not determinable from source. If tests require a running application context, consult the project's own documentation to identify the correct entry point before running tests.
+- **Import error on `app.py`**: The `app` variable in `app.py` is the Flask application object; if it has been renamed, the test client instantiation in tests will fail. Restore the variable name to `app` or update test references accordingly.
+- **Accumulated state across tests**: The `_greetings` list is module-level mutable state. If tests call `/greet/<name>` and share the same app instance, greetings accumulate across test functions and assertions may fail. Re-create the Flask test client per test function, or reset `_greetings` in a fixture between tests.
+- **Missing dependencies**: If `pytest` or `flask` are not found, run `pip install -e .` from the repository root to install all declared dependencies from `pyproject.toml`.
+- **Wrong Python version**: This project requires Python `>=3.11`. If tests fail with syntax or compatibility errors, verify the active interpreter with `python --version` and switch to a supported version.

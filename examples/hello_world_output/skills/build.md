@@ -5,26 +5,45 @@ description: Build the project artifacts.
 
 ## When to use this skill
 
-Use this skill when you need to install project dependencies and prepare the environment for running or testing the Flask application.
+Use this skill when you need to install the project and its dependencies to prepare the environment for running or testing the application.
 
 ## Steps
 
-1. Install project dependencies by running: `pip install -r requirements.txt`
-2. Verify the installation completed without errors by checking that all packages were successfully installed.
-3. Confirm success by running: `pip list` to validate that dependencies are present in the environment.
+1. Install the project and its dependencies:
+   ```
+   pip install -e .
+   ```
+   If the above fails, fall back to:
+   ```
+   pip install -r requirements.txt
+   ```
+2. Verify the Flask entry point is importable:
+   ```
+   python -c "from app import app; print('app loaded')"
+   ```
+3. Confirm the application starts without error:
+   ```
+   python app.py
+   ```
 
 ## Expected output
 
-A successful run produces output showing each package being downloaded and installed, ending with a line similar to:
-
+A successful install via `pip install -e .` will print dependency resolution output ending with:
 ```
-Successfully installed <package-name>==<version> ...
+Successfully installed <package-list>
 ```
-
-No error messages or dependency conflict warnings should appear.
+The import check will print:
+```
+app loaded
+```
+Starting `python app.py` will produce Flask's development server output, e.g.:
+```
+ * Running on http://127.0.0.1:5000
+```
 
 ## Common failures
 
-- **Missing requirements.txt**: No `requirements.txt` is confirmed present in the repository file tree. If the file is absent, the build command will fail with `ERROR: Could not open requirements file`. Locate or recreate the requirements file before proceeding — dependency information must be inferred from documentation as noted in the project analysis.
-- **Dependency conflicts**: If conflicting package versions are detected during install, resolve them by reviewing the requirements file and aligning version pins, or use a fresh virtual environment to isolate the installation.
-- **Application source files not present**: The repository is identified as an example output directory containing AgentReady-generated artifacts only, not the actual Flask application code. If source files are missing, the build environment may install successfully but the application will not be runnable. Verify you are working in the correct repository before proceeding.
+- **`pip install -e .` fails with no `[dev]` extras error**: The project has no `extras_require` dev section; run `pip install -r requirements.txt` instead — this is the authoritative fallback.
+- **`python -c "from app import app"` fails with `ModuleNotFoundError: flask`**: Dependencies were not installed successfully; re-run the install step and confirm `flask>=2.3` is present in the environment (`pip show flask`).
+- **`python app.py` fails with `Address already in use`**: Another process is occupying the default Flask port; stop the conflicting process or set `FLASK_RUN_PORT` to a free port before retrying.
+- **Wrong Python version**: This project requires Python `>=3.11`; confirm your active interpreter with `python --version` and switch to a compliant version if needed.

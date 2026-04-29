@@ -5,24 +5,33 @@ description: Trigger or simulate the CI pipeline.
 
 ## When to use this skill
 
-Use this skill when you need to simulate or trigger the CI pipeline locally to verify that dependencies install and tests pass.
+Use this skill whenever you need to validate the full pipeline locally before pushing — or to reproduce a CI failure.
 
 ## Steps
 
-1. Install dependencies: `pip install -r requirements.txt`
-2. Run the test suite: `pytest`
-3. Confirm all tests pass with no errors by reviewing the pytest output summary at the end of the run.
+1. Install dependencies: `pip install -e .`
+2. Run the linter: `ruff check .`
+3. Run the formatter check: `ruff format .`
+4. Run the test suite: `pytest`
+5. Confirm all steps exit with code 0.
 
 ## Expected output
 
-A successful run produces a pytest summary line indicating all collected tests passed (e.g., `X passed in Xs`), with no errors or failures reported. The dependency installation step should complete without package resolution errors.
+A successful run produces:
+- `ruff check .` — no output and exit code 0 (or a summary line such as `All checks passed.`)
+- `ruff format .` — no output or a line confirming no files were reformatted, exit code 0
+- `pytest` — a summary line such as `X passed in Xs` with no failures or errors, exit code 0
 
 ## Common failures
 
-- **`requirements.txt` not found**: The analysis notes that no `requirements.txt` is visible in the file tree. This file may be absent or located at an unverified path. Check the repository root and consult project documentation before running the install command.
-- **No tests collected by pytest**: The test directory is not determinable from source. Locate the test files manually and confirm pytest can discover them, or check for a `pytest.ini`, `setup.cfg`, or `pyproject.toml` that configures the test path.
-- **Import errors during test run**: Application source files are noted as potentially absent from this repository (this may be an example output directory). Verify that the actual Flask application code is present before running CI.
+- **`ruff check` reports violations**: Fix the flagged lines (rules E, F, I enforced at line length 88) and re-run `ruff check .` until it exits cleanly.
+- **`ruff format` reports files would be reformatted**: Run `ruff format .` without `--check` to apply formatting, then re-run the check step.
+- **`pytest` fails due to accumulated greeting state**: The `_greetings` list is module-level mutable state. If tests that call `/greet/<name>` share a single app instance, greetings accumulate across test functions. Ensure each test function re-creates the Flask test client or resets `_greetings` between tests.
+- **`pip install -e .` fails**: The project uses `pyproject.toml` as the authoritative dependency source (`flask>=2.3`, Python `>=3.11`). Do not edit `requirements.txt` for project dependencies — it is not the authoritative source. Verify `pyproject.toml` is well-formed and retry.
+- **Wrong Python version**: This project requires Python `>=3.11`. Confirm your active interpreter with `python --version` and switch to a compliant version if needed.
 
 ## Notes
 
-The analysis flags that this repository may contain only AgentReady-generated artifacts and not the actual Flask application source code. Confirm that application source files and `requirements.txt` are present before attempting to run the CI pipeline.
+- `pip install -e '.[dev]'` will fall back silently to the base install because no `dev` extras section is defined in `pyproject.toml`. This is expected behaviour — the base install is sufficient to run CI.
+- No secrets handling mechanism is configured in this repository. Establish one before adding any credentials.
+- No irreversible operations are present in this codebase. State changes are ephemeral (in-memory only).

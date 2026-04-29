@@ -19,7 +19,7 @@
     ]
   },
   "dynamic": {
-    "last_scanned": "2026-04-29T08:35:15.904585+00:00",
+    "last_scanned": "2026-04-29T12:11:06.468272+00:00",
     "secondary_languages": [],
     "build_system": "pip",
     "build_command": "pip install -e '.[dev]' 2>/dev/null || pip install -r requirements.txt",
@@ -34,7 +34,7 @@
       "app": "app.py",
       "tests": "tests/"
     },
-    "architecture_summary": "A single-module Flask application (app.py) that defines four REST endpoints and stores greetings in an in-memory list. There is no database or external dependency beyond Flask itself. Tests live in a dedicated tests/ directory and exercise the endpoints through Flask's test client.",
+    "architecture_summary": "Single-module Flask application exposing four REST endpoints (index, health, greet, greetings). All state is held in an in-memory list within the app module\u2014there is no database or external dependency. The test suite exercises these endpoints through Flask's test client.",
     "key_components": [
       {
         "name": "app",
@@ -44,26 +44,28 @@
       {
         "name": "test_app",
         "path": "tests/test_app.py",
-        "responsibility": "Contains tests for the API endpoints."
+        "responsibility": "Contains the test suite that validates all API endpoints."
       }
     ],
     "agent_safe_operations": [
-      "Adding new GET/POST endpoints in app.py",
-      "Adding new test files or test functions in tests/",
-      "Updating greeting logic or response format",
-      "Adding new utility modules alongside app.py"
+      "Adding new GET/POST endpoints to app.py",
+      "Adding new test functions in tests/test_app.py",
+      "Updating greeting message formatting",
+      "Adding new utility modules alongside app.py",
+      "Updating requirements.txt with new dependencies"
     ],
     "agent_forbidden_operations": [
-      "Removing or renaming existing public endpoints (/, /health, /greet/<name>, /greetings) without updating tests",
-      "Changing the Flask app variable name 'app' which tests likely import directly",
-      "Introducing database dependencies without corresponding migration/setup instructions"
+      "Removing or renaming existing public endpoints without updating tests",
+      "Changing the _greetings in-memory data structure without updating all consumers",
+      "Changing the Flask app variable name 'app' (likely imported by tests)",
+      "Removing pytest configuration from pyproject.toml"
     ],
     "potential_pitfalls": [
-      "The _greetings list is module-level state \u2014 it persists across requests within a process but resets on restart; tests that don't reset the list between runs may see stale data.",
-      "Flask's test client must import 'app' from app.py; renaming that symbol breaks test discovery.",
-      "All endpoints are GET-only; adding POST/PUT endpoints requires careful attention since the existing pattern uses @app.get() shorthand.",
-      "No CORS or authentication is configured; adding middleware may change response headers that tests assert on.",
-      "The in-memory store is a plain list with no thread safety; concurrent requests under a threaded server could cause race conditions."
+      "The _greetings list is module-level mutable state; tests that call /greet/<name> will accumulate greetings across test functions unless the test client or app is re-created per test.",
+      "app.py serves as both the module defining the Flask app and the runnable entry point; importing it at module level triggers route registration and list initialisation.",
+      "No database is used\u2014data is lost on restart and is not thread-safe under concurrent requests.",
+      "The project has no extras_require 'dev' section in pyproject.toml, so 'pip install -e .[dev]' in the Makefile will fall back to requirements.txt.",
+      "Flask test client must be obtained from the 'app' object in app.py; renaming that variable will break tests."
     ],
     "conventions": {
       "naming": "snake_case",
