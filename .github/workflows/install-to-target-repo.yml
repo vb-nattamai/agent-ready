@@ -51,7 +51,7 @@ jobs:
           echo "   Eval mode: $EVAL_MODE"
 
       - name: Checkout toolkit (for workflow templates)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: toolkit
 
